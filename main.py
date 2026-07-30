@@ -4,6 +4,7 @@ import numpy as np
 import requests
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
 
 # ==========================================
 # 1. 페이지 설정 및 트렌디 대시보드 CSS
@@ -104,7 +105,7 @@ st.markdown("""
 st.markdown("""
 <div class="dashboard-header">
     <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
-    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 복지 인프라 공급 시급성 진단</div>
+    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 복지 인프라 시급성 및 종합 브리핑 보고서 생성</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -284,7 +285,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 tab_map, tab_infra, tab_compare, tab_scatter, tab_tree = st.tabs([
     "🗺️ 전국 지도 & 미래 예측", 
-    "🏥 복지 인프라 공급 시급성 분석 (신규)",
+    "🏥 복지 인프라 공급 시급성 분석",
     "⚔️ 지자체 1:1 비교",
     "🎯 고령인구 규모 vs 비율 분석",
     "🔲 시·도 계층별 트리맵"
@@ -399,7 +400,7 @@ with tab_map:
             st.info("👈 사이드바 필터에서 특정 **시군구**를 선택하시면 지자체 자동 진단 리포트와 2035년 미래 예측 그래프를 확인할 수 있습니다.")
 
 # ------------------------------------------
-# TAB 2: 신규 추가 - 복지 인프라 시급성 분석
+# TAB 2: 복지 인프라 시급성 분석
 # ------------------------------------------
 with tab_infra:
     st.markdown(f"##### 🏥 {selected_year}년 고령인구 규모 & 비율 기반 복지 인프라 시급성 진단")
@@ -408,7 +409,6 @@ with tab_infra:
     avg_elderly_pop = df_year["고령인구"].median()
     avg_aging_rate = df_year["고령화율"].mean()
 
-    # 인프라 필요도 분류 계산
     def classify_infra(row):
         if row["고령화율"] >= avg_aging_rate and row["고령인구"] >= avg_elderly_pop:
             return "🚨 1순위: 시설 확충 최우선 (고비율+대규모)"
@@ -420,7 +420,6 @@ with tab_infra:
             return "🟢 4순위: 일반 관리 지역"
 
     df_year["인프라시급성"] = df_year.apply(classify_infra, axis=1)
-
     infra_counts = df_year["인프라시급성"].value_counts()
 
     col_i1, col_i2 = st.columns([1, 1])
@@ -449,7 +448,6 @@ with tab_infra:
         p1_display.columns = ["지역명", "65세 이상 인구 (명)", "고령화율 (%)"]
         st.dataframe(p1_display, use_container_width=True)
 
-    # 선택 지자체 가이드
     if selected_region != "전국 (전체)":
         target_infra = df_year[df_year["지역명"] == selected_region]
         if len(target_infra) > 0:
@@ -598,7 +596,76 @@ with tab_tree:
     st.plotly_chart(fig_tree, use_container_width=True)
 
 # ==========================================
-# 6. 하단 데이터 정리
+# 6. 지자체 종합 브리핑 보고서 (PDF/인쇄 브라우저 자동 출력)
+# ==========================================
+st.markdown("<br><hr>", unsafe_allow_html=True)
+st.markdown("### 📑 지자체 종합 브리핑 보고서 생성")
+
+if selected_region != "전국 (전체)":
+    rep_row = df_year[df_year["지역명"] == selected_region].iloc[0]
+    
+    reg_history = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
+    rate_2015 = reg_history.iloc[0]["고령화율"]
+    rate_curr = rep_row["고령화율"]
+    diff_rate = round(rate_curr - rate_2015, 1)
+
+    # 보고서 HTML 템플릿
+    report_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: 'Malgun Gothic', sans-serif; padding: 20px; background: #fff; color: #333; }}
+            .rep-card {{ border: 2px solid #0f172a; border-radius: 12px; padding: 30px; max-width: 800px; margin: 0 auto; }}
+            .rep-title {{ font-size: 24px; font-weight: bold; border-bottom: 3px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; text-align: center; color: #0f172a; }}
+            .rep-grid {{ display: flex; justify-content: space-between; margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 8px; }}
+            .rep-item {{ text-align: center; width: 30%; }}
+            .rep-label {{ font-size: 13px; color: #64748b; font-weight: bold; }}
+            .rep-val {{ font-size: 20px; font-weight: bold; color: #1e293b; margin-top: 5px; }}
+            .rep-section {{ margin-top: 20px; line-height: 1.6; font-size: 14px; }}
+            .rep-badge {{ background: #ef4444; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
+            .print-btn {{ background: #2563eb; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 15px; width: 100%; }}
+            .print-btn:hover {{ background: #1d4ed8; }}
+        </style>
+    </head>
+    <body>
+        <div class="rep-card">
+            <div class="rep-title">📄 {selected_region} 고령화 인구 종합 브리핑 보고서</div>
+            <div class="rep-grid">
+                <div class="rep-item">
+                    <div class="rep-label">기준 연도</div>
+                    <div class="rep-val">{selected_year}년</div>
+                </div>
+                <div class="rep-item">
+                    <div class="rep-label">고령화율 (전국 순위)</div>
+                    <div class="rep-val">{rep_row['고령화율']}% ({rep_row['전국순위']}위)</div>
+                </div>
+                <div class="rep-item">
+                    <div class="rep-label">65세 이상 인구</div>
+                    <div class="rep-val">{rep_row['고령인구']:,} 명</div>
+                </div>
+            </div>
+            <div class="rep-section">
+                <h4>📌 주요 동향 요약</h4>
+                <ul>
+                    <li><b>인구 구조:</b> {selected_year}년 기준 총 인구 <b>{rep_row['전체인구']:,}명</b> 중 65세 이상 고령층 인구는 <b>{rep_row['고령인구']:,}명</b>을 차지함.</li>
+                    <li><b>10년 추이:</b> 2015년 고령화율 <b>{rate_2015}%</b>에서 {selected_year}년 현재 <b>{rate_curr}%</b>로 <b>+{diff_rate}%p</b> 증가함.</li>
+                    <li><b>인프라 종합 시급성:</b> 본 지자체는 현재 복지 인프라 공급 시급성 평가에서 관리가 필요한 지역으로 분류됨.</li>
+                </ul>
+            </div>
+            <button class="print-btn" onclick="window.print()">🖨️ 브라우저 PDF 출력 / 즉시 인쇄하기</button>
+        </div>
+    </body>
+    </html>
+    """
+    
+    components.html(report_html, height=450)
+else:
+    st.info("👈 사이드바에서 특정 **시군구**를 선택하시면 보고서 카드가 자동 생성됩니다.")
+
+# ==========================================
+# 7. 하단 데이터 정리
 # ==========================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown(f"##### 📋 {selected_year}년 고령화율 극단 지자체 (Top 10 / Bottom 10)")

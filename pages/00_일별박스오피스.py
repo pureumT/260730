@@ -1,318 +1,128 @@
-from datetime import datetime, timedelta
-import random
-import time
-import urllib.parse
-from zoneinfo import ZoneInfo
-import pandas as pd
-import plotly.express as px
-import requests
 import streamlit as st
+from openai import OpenAI
 
-# ==========================================
-# 1. 페이지 테마 & 기본 설정
-# ==========================================
-st.set_page_config(
-    page_title="🍿 팝콘 오락실 & 박스오피스", page_icon="🎬", layout="wide"
+# 페이지 기본 설정 (멋진 타이틀과 로고)
+st.set_page_config(page_title="AI Cyber Teacher", page_icon="⚡", layout="wide")
+
+# 비밀 금고(secrets)에서 API 키를 꺼내 접속 준비
+client = OpenAI(
+    api_key=st.secrets["SOLAR_API_KEY"],
+    base_url="https://api.upstage.ai/v1",
 )
 
-# ==========================================
-# 2. API 키 및 공통 데이터 불러오기
-# ==========================================
-if "KOBIS_KEY" not in st.secrets:
-    st.error("🚨 Secrets에 `KOBIS_KEY`를 등록해 주세요!")
-    st.stop()
-
-KOBIS_KEY = st.secrets["KOBIS_KEY"]
-API_URL = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
-
-
-@st.cache_data(ttl=3600)
-def fetch_box_office(target_dt_str):
-    try:
-        res = requests.get(
-            API_URL,
-            params={"key": KOBIS_KEY, "targetDt": target_dt_str},
-            timeout=10,
-        )
-        if res.status_code != 200:
-            return None, f"HTTP 오류 ({res.status_code})"
-
-        data = res.json()
-        if "faultInfo" in data:
-            return None, data["faultInfo"].get("message", "인증 오류")
-
-        box_list = data.get("boxOfficeResult", {}).get("dailyBoxOfficeList", [])
-        if not box_list:
-            return None, "해당 날짜의 데이터가 없습니다."
-
-        df = pd.DataFrame(box_list)
-        num_cols = [
-            "rank",
-            "rankInten",
-            "salesAmt",
-            "salesShare",
-            "salesChange",
-            "audiCnt",
-            "audiAcc",
-            "scrnCnt",
-            "showCnt",
-        ]
-        for col in num_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-        return df, None
-    except Exception as e:
-        return None, f"네트워크 오류: {str(e)}"
-
-
-# KST 어제 날짜
-today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
-default_yesterday = (today_kst - timedelta(days=1)).date()
-
-# 게임 세션 상태 초기화
-if "target_date" not in st.session_state:
-    st.session_state.target_date = default_yesterday
-if "game_score" not in st.session_state:
-    st.session_state.game_score = 0
-if "game_combo" not in st.session_state:
-    st.session_state.game_combo = 0
-
-
-def set_random_date():
-    start_date = datetime(2004, 1, 1).date()
-    random_days = random.randint(0, (default_yesterday - start_date).days)
-    st.session_state.target_date = start_date + timedelta(days=random_days)
-
-
-def reset_date():
-    st.session_state.target_date = default_yesterday
-
-
-def on_date_change():
-    st.session_state.target_date = st.session_state.temp_picker
-
-
-# ==========================================
-# 3. 최상단 컨트롤러
-# ==========================================
-st.title("🍿 팝콘 오락실 & 박스오피스 Hub")
-st.caption("데이터 분석부터 극장가 미니게임까지 즐겨보세요!")
-
-with st.container():
-    c1, c2, c3 = st.columns([2, 1, 1])
-    with c1:
-        st.date_input(
-            "📅 **타임머신 날짜 선택**",
-            value=st.session_state.target_date,
-            max_value=default_yesterday,
-            key="temp_picker",
-            on_change=on_date_change,
-        )
-    with c2:
-        st.write(" ")
-        st.write(" ")
-        st.button(
-            "🎲 **랜덤 타임머신**",
-            on_click=set_random_date,
-            use_container_width=True,
-        )
-    with c3:
-        st.write(" ")
-        st.write(" ")
-        st.button(
-            "🔄 **어제로 복귀**", on_click=reset_date, use_container_width=True
-        )
-
-current_date = st.session_state.target_date
-target_dt = current_date.strftime("%Y%m%d")
-
-st.divider()
-
-# ==========================================
-# 4. 데이터 로드
-# ==========================================
-df, err = fetch_box_office(target_dt)
-
-if err:
-    st.error(f"🚨 {err}")
-    st.stop()
-
-top = df.sort_values("rank").iloc[0]
-
-# ==========================================
-# 5. 🎮 탭 구성 (미니게임 강화!)
-# ==========================================
-tab1, tab2, tab3 = st.tabs(
-    ["🎮 팝콘 오락실 (미니게임 2종)", "🏆 1위 영화 & 비주얼", "📊 순위 & 주식창"]
-)
-
-# ------------------------------------------
-# TAB 1: 🎮 팝콘 오락실 (게임성 극대화!)
-# ------------------------------------------
-with tab1:
-    st.subheader("🎮 팝콘 오락실에 오신 것을 환영합니다!")
-
-    game_type = st.radio(
-        "**놀고 싶은 게임을 선택하세요:**",
-        ["🎰 1. 오늘의 영화 가차 (슬롯머신)", "🔥 2. 관객수 UP & DOWN 퀴즈"],
-        horizontal=True,
+# ---------------------------------------------------------
+# [사이드바] 캐릭터 선택 및 가젯(Gadget) 모듈
+# ---------------------------------------------------------
+with st.sidebar:
+    st.title("⚡ SYSTEM CONTROL")
+    st.caption("AI 프롬프트 페르소나 및 세션 옵션")
+    
+    # 1. 멋진 페르소나 선택
+    persona = st.radio(
+        "🎭 AI 페르소나 모드",
+        ["🤖 친절한 미래 정보 스승", "🥷 츤데레 천재 해커", "🧙‍♂️ 알키미아(연금술) 마법사"]
     )
+    
+    st.divider()
 
-    st.write("---")
+    # 페르소나별 퓨샷(Few-shot) 프롬프트 정의
+    if persona == "🤖 친절한 미래 정보 스승":
+        SYSTEM_PROMPT = """너는 futuristic한 미래 지식을 친절하게 가르쳐주는 최고 레벨의 정보 선생님이야.
+어려운 기술 용어를 완벽하고 명쾌한 비유를 들어 설명해 줘.
 
-    # ------------------------------------
-    # 게임 1: 슬롯머신 (뽑기)
-    # ------------------------------------
-    if "슬롯머신" in game_type:
-        st.markdown("### 🎰 팝콘 영화 가차 (Slot Machine)")
-        st.caption(
-            "버튼을 누르면 슬롯이 돌아가며 박스오피스 TOP 10 중 1편이 무작위로 당첨됩니다!"
-        )
+[답변 예시]
+Q: RAM이 뭐야?
+A: RAM은 최첨단 '광속 작업대'와 같아요! 작업대가 넓을수록 여러 프로젝트 설계도를 동시에 펼쳐놓고 빠르게 작업할 수 있죠.
 
-        slot_col, res_col = st.columns([1, 2])
+Q: 방화벽이 뭐야?
+A: 방화벽은 요새의 '스마트 보안 검문소'입니다. 허가되지 않은 수상한 데이터 패킷이 들어오면 즉시 차단하여 시스템을 보호하죠."""
 
-        with slot_col:
-            st.image(
-                "https://em-content.zobj.net/source/skype/289/slot-machine_1f3b0.png",
-                width=120,
+    elif persona == "🥷 츤데레 천재 해커":
+        SYSTEM_PROMPT = """너는 실력은 최고지만 말투는 무심하고 쿨한 '해커'야.
+투덜대면서도 해답은 완벽하게 쉬운 비유로 핵심만 딱 짚어 줘.
+
+[답변 예시]
+Q: RAM이 뭐야?
+A: 쯧, 그것도 몰라? RAM은 그냥 '책상 넓이'야. 책상이 넓어야 창을 여러 개 띄워도 안 버벅거리지. 이 정도는 기본이라고.
+
+Q: 방화벽이 뭐야?
+A: 해킹 막는 클럽 '문지기' 몰라? 해로운 놈들은 밖으로 쫓아내고 안전한 데이터만 통과시키는 게 방화벽이야."""
+
+    else: # 연금술 마법사
+        SYSTEM_PROMPT = """너는 디지털 세계의 원리를 마법의 언어로 풀어서 가르쳐주는 '전설의 연금술 스승'이다.
+신비롭지만 깨달음을 주는 비유로 연금술(정보과학)의 비기를 전수해라.
+
+[답변 예시]
+Q: RAM이 뭐야?
+A: RAM은 현자가 주문을 읊는 '찰나의 마법진'이니라! 마법진의 크기가 클수록 더욱 강력하고 많은 주문을 동시에 유지할 수 있지.
+
+Q: 방화벽이 뭐야?
+A: 그것은 데이터의 성소를 지키는 '결계(結界)'이니라. 사악한 마력의 침입을 물리쳐 성소를 정화하는 구실을 하지."""
+
+    # 2. 세션 제어 기능 (초기화 & 다운로드)
+    if st.button("🔄 대화 메모리 리셋", use_container_width=True):
+        st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        st.rerun()
+
+    # 대화 기록 텍스트 파일 다운로드
+    if "messages" in st.session_state and len(st.session_state.messages) > 1:
+        chat_text = "\n\n".join([f"[{m['role'].upper()}]\n{m['content']}" for m in st.session_state.messages if m['role'] != 'system'])
+        st.download_button("📥 로그 기록 추출 (.txt)", data=chat_text, file_name="cyber_teacher_log.txt", use_container_width=True)
+
+# ---------------------------------------------------------
+# [메인 화면] 메인 챗 인터페이스
+# ---------------------------------------------------------
+st.title(f"⚡ {persona.split()[1]} 모드 가동 중")
+st.caption("질문을 던지면 AI가 실시간 파동 스트리밍으로 답변을 출력합니다.")
+
+# 대화 세션 초기화 (처음 접속 시)
+if "messages" not in st.session_state or st.session_state.messages[0]["content"] != SYSTEM_PROMPT:
+    st.session_state.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+# 이전 대화 렌더링
+for msg in st.session_state.messages:
+    if msg["role"] != "system":
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+# 퀵 추천 질문 (초반 쿨감용 버튼)
+st.write("")
+st.markdown("##### 💡 **Quick Query (클릭하여 즉시 질문):**")
+q_col1, q_col2, q_col3 = st.columns(3)
+
+prompt_to_send = None
+if q_col1.button("🧠 CPU vs RAM 차이"):
+    prompt_to_send = "CPU와 RAM의 차이를 너의 스타일로 가장 멋지게 설명해 줘!"
+if q_col2.button("🛡️ 바이러스와 백신"):
+    prompt_to_send = "컴퓨터 바이러스와 백신의 원리를 쉽게 설명해 줘!"
+if q_col3.button("🌐 인터넷의 원리"):
+    prompt_to_send = "우리가 웹사이트에 접속할 때 일어나는 일을 설명해 줘!"
+
+# 채팅 입력창
+user_input = st.chat_input("시스템에 질문을 입력하십시오...")
+
+# 버튼 클릭 또는 일반 입력 처리
+final_input = prompt_to_send or user_input
+
+if final_input:
+    # 사용자 입력 저장 및 출력
+    st.session_state.messages.append({"role": "user", "content": final_input})
+    with st.chat_message("user"):
+        st.markdown(final_input)
+
+    # AI 스트리밍 응답 생성
+    with st.chat_message("assistant"):
+        try:
+            stream = client.chat.completions.create(
+                model="solar-open2",
+                messages=st.session_state.messages,
+                reasoning_effort="none",
+                stream=True,
             )
-            spin_btn = st.button(
-                "🎰 **레버 당기기! (SPIN)**", use_container_width=True
+            answer = st.write_stream(
+                chunk.choices[0].delta.content or ""
+                for chunk in stream if chunk.choices
             )
-
-        with res_col:
-            if spin_btn:
-                # 슬롯머신 돌아가는 연출
-                placeholder = st.empty()
-                movies = df["movieNm"].tolist()
-
-                for _ in range(12):
-                    temp_movie = random.choice(movies)
-                    placeholder.markdown(f"## 🌀 **[{temp_movie}]** ...")
-                    time.sleep(0.08)
-
-                # 최종 결과
-                picked_row = df.sample(1).iloc[0]
-                placeholder.empty()
-
-                if picked_row["rank"] == 1:
-                    st.balloons()
-                    st.success(
-                        f"🎉 **JACKPOT! 1위 영화가 당첨되었습니다!**\n\n### 🎬 <{picked_row['movieNm']}> (당일 관객수: {picked_row['audiCnt']:,}명)"
-                    )
-                else:
-                    st.info(
-                        f"✨ **당첨!** {picked_row['rank']}위 영화가 나왔습니다.\n\n### 🎬 <{picked_row['movieNm']}>"
-                    )
-
-                yt_query = urllib.parse.quote(f"{picked_row['movieNm']} 예고편")
-                st.markdown(
-                    f"👉 [▶️ **유튜브에서 이 영화 예고편 보기**](https://www.youtube.com/results?search_query={yt_query})"
-                )
-
-    # ------------------------------------
-    # 게임 2: UP & DOWN 연속 퀴즈
-    # ------------------------------------
-    else:
-        st.markdown("### 🔥 관객수 UP & DOWN 아케이드")
-        st.caption(
-            "선택한 날짜의 데이터를 바탕으로 문제를 풉니다. 콤보를 쌓아 최고 기록을 세워보세요!"
-        )
-
-        # 게임 스코어 보드
-        sc1, sc2 = st.columns(2)
-        sc1.metric("현재 점수", f"{st.session_state.game_score} 점")
-        sc2.metric("🔥 연속 콤보", f"{st.session_state.game_combo} 회")
-
-        st.write("---")
-
-        # 2위 영화 vs 1위 영화 절반 관객수 비교 문제
-        movie_1st = df.iloc[0]
-        movie_2nd = df.iloc[1] if len(df) > 1 else df.iloc[0]
-
-        half_1st_audi = movie_1st["audiCnt"] / 2
-        actual_2nd_audi = movie_2nd["audiCnt"]
-
-        st.markdown(
-            f"**Q. 2위 영화 <{movie_2nd['movieNm']}>의 어제 관객수는 1위 영화 <{movie_1st['movieNm']}> 관객수 절반({int(half_1st_audi):,}명)보다 많을까요, 적을까요?**"
-        )
-
-        btn_col1, btn_col2 = st.columns(2)
-
-        is_up = actual_2nd_audi > half_1st_audi
-
-        if btn_col1.button("▲ **UP (더 많다!)**", use_container_width=True):
-            if is_up:
-                st.balloons()
-                st.success(
-                    f"⭕ **정답입니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
-                )
-                st.session_state.game_score += 10
-                st.session_state.game_combo += 1
-            else:
-                st.error(
-                    f"❌ **틀렸습니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
-                )
-                st.session_state.game_combo = 0
-
-        if btn_col2.button("▼ **DOWN (더 적다!)**", use_container_width=True):
-            if not is_up:
-                st.balloons()
-                st.success(
-                    f"⭕ **정답입니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
-                )
-                st.session_state.game_score += 10
-                st.session_state.game_combo += 1
-            else:
-                st.error(
-                    f"❌ **틀렸습니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
-                )
-                st.session_state.game_combo = 0
-
-# ------------------------------------------
-# TAB 2: 🏆 1위 영화 & 비주얼
-# ------------------------------------------
-with tab2:
-    st.subheader(f"🏆 {current_date.strftime('%Y-%m-%d')} 영예의 1위")
-
-    col_left, col_right = st.columns([1, 1])
-    with col_left:
-        st.markdown(f"### **<{top['movieNm']}>**")
-        m1, m2 = st.columns(2)
-        m1.metric("🍿 관객수", f"{int(top['audiCnt']):,} 명")
-        m2.metric("💵 당일 매출액", f"{int(top['salesAmt']/10000):,} 만원")
-
-        daum_query = urllib.parse.quote(f"영화 {top['movieNm']}")
-        st.markdown(
-            f"👉 [🔍 **포스터 & 줄거리 보러가기**](https://search.daum.net/search?w=tot&q={daum_query})"
-        )
-
-    with col_right:
-        fig_pie = px.pie(
-            df,
-            values="salesShare",
-            names="movieNm",
-            title="🎬 당일 시장 점유율 파이",
-            hole=0.4,
-        )
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-# ------------------------------------------
-# TAB 3: 📊 순위 & 주식창
-# ------------------------------------------
-with tab3:
-    st.subheader("📋 전체 박스오피스 TOP 10")
-    st.dataframe(
-        df[["rank", "movieNm", "openDt", "audiCnt", "salesShare"]].rename(
-            columns={
-                "rank": "순위",
-                "movieNm": "영화명",
-                "openDt": "개봉일",
-                "audiCnt": "관객수",
-                "salesShare": "점유율(%)",
-            }
-        ),
-        use_container_width=True,
-        hide_index=True,
-    )
+            st.session_state.messages.append({"role": "assistant", "content": answer})
+        except Exception:
+            st.error("⚠️ 시스템 통신 오류 발생. 잠시 후 다시 시도하십시오.")

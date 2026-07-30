@@ -79,16 +79,6 @@ st.markdown("""
         color: #3b82f6;
     }
 
-    /* 특정 지역 딥다이브 카드 */
-    .target-section {
-        background: #ffffff;
-        border: 2px solid #3b82f6;
-        border-radius: 20px;
-        padding: 28px;
-        margin-top: 32px;
-        box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.1);
-    }
-
     /* 탭 스타일 개편 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
@@ -120,7 +110,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 처리 (캐싱 적용)
+# 2. 데이터 처리 (행정구역 명칭 표준화 반영)
 # ==========================================
 @st.cache_data
 def load_population_data():
@@ -129,6 +119,11 @@ def load_population_data():
     
     df["sigungu_code"] = df["코드"].str[:5]
     
+    # 시도 명칭 변경(강원특별자치도 등)에 따른 매칭 불일치 완화를 위해 표준화 처리
+    df["시도"] = df["시도"].fillna("").astype(str)
+    df["시군구"] = df["시군구"].fillna("").astype(str)
+    
+    # 연도별로 명칭이 다를 수 있어 코드를 대표 명칭으로 통일
     total_cols = [c for c in df.columns if c.startswith("계_")]
     elderly_cols = []
     for col in total_cols:
@@ -141,18 +136,24 @@ def load_population_data():
     df["전체인구"] = df[total_cols].sum(axis=1)
     df["고령인구"] = df[elderly_cols].sum(axis=1)
     
+    # 코드를 기준으로 시도, 시군구의 가장 최근 명칭 추출해서 통일
+    latest_names = df.sort_values("연도").groupby("sigungu_code").last()[["시도", "시군구"]].reset_index()
+    latest_names.columns = ["sigungu_code", "표준시도", "표준시군구"]
+    
+    df = pd.merge(df, latest_names, on="sigungu_code", how="left")
+    
     sigungu_df = df.groupby(["연도", "sigungu_code"]).agg({
-        "시도": "first",
-        "시군구": "first",
+        "표준시도": "first",
+        "표준시군구": "first",
         "전체인구": "sum",
         "고령인구": "sum"
     }).reset_index()
     
+    sigungu_df.rename(columns={"표준시도": "시도", "표준시군구": "시군구"}, inplace=True)
+    
     sigungu_df["고령화율"] = (sigungu_df["고령인구"] / sigungu_df["전체인구"]) * 100
     sigungu_df["고령화율"] = sigungu_df["고령화율"].round(1)
     
-    sigungu_df["시도"] = sigungu_df["시도"].fillna("")
-    sigungu_df["시군구"] = sigungu_df["시군구"].fillna("")
     sigungu_df["지역명"] = (sigungu_df["시도"] + " " + sigungu_df["시군구"]).str.strip()
     
     bins = [0, 19, 23, 28, 38, 100]
@@ -459,7 +460,6 @@ if selected_region != "전국 (전체)":
     st.markdown("<br><hr>", unsafe_allow_html=True)
     st.markdown(f"### 🔍 PART 2. 타겟 지자체 딥다이브 분석 — [{selected_region}]")
 
-    # 선택 지역 안전 검색 (IndexError 완벽 방지)
     target_match = df_year[df_year["지역명"] == selected_region]
 
     if not target_match.empty:
@@ -476,14 +476,12 @@ if selected_region != "전국 (전체)":
         pred_2035 = future_y[-1]
         growth_10y = round(curr_rate - y[0], 1) if len(y) > 0 else 0.0
 
-        # 지자체 서브 탭 (지역 단위 집중 분석)
         sub_tab1, sub_tab2, sub_tab3 = st.tabs([
             "🩺 위험 등급 진단 & 2035년 예측",
             "⚔️ 1:1 타 지자체 교차 비교",
             "📑 브리핑 보고서 (PDF/인쇄 생성)"
         ])
 
-        # Sub Tab 1: 진단 리포트 & 예측
         with sub_tab1:
             col_pred1, col_pred2 = st.columns([1, 1])
 
@@ -498,7 +496,6 @@ if selected_region != "전국 (전체)":
                 else:
                     st.success(f"**[양호 단계]**\n\n**{selected_region}**은(는) 고령화율 **{curr_rate}%**로 비교적 젊은 인구 체질을 유지하고 있습니다.")
 
-                # 인프라 분류 정보
                 if "인프라시급성" in rep_row:
                     st.info(f"🏥 **복지 인프라 공급 유형:** `{rep_row['인프라시급성']}`")
 
@@ -514,7 +511,6 @@ if selected_region != "전국 (전체)":
                 )
                 st.plotly_chart(fig_pred, use_container_width=True)
 
-        # Sub Tab 2: 1:1 비교
         with sub_tab2:
             st.markdown(f"##### ⚔️ [{selected_region}] VS 다른 지자체 1:1 비교")
             region_list_sub = sorted([r for r in valid_regions if r != selected_region])
@@ -555,7 +551,6 @@ if selected_region != "전국 (전체)":
                         fig_comp_bar.update_layout(yaxis=dict(title="인원수 (명)"), margin={"r":10, "t":10, "l":10, "b":10}, height=320)
                         st.plotly_chart(fig_comp_bar, use_container_width=True)
 
-        # Sub Tab 3: 종합 보고서 출력
         with sub_tab3:
             st.markdown("##### 📑 한 클릭 종합 브리핑 보고서")
             

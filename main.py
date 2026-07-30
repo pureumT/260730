@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("📊 전국 시군구 고령화율 & 미래 예측 대시보드")
-st.markdown("2015~2026년 고령화 현황과 함께 **지역별 미래 고령화율 및 중·고교 입학생 수** 예측을 제공합니다.")
+st.markdown("전국 시군구별 고령화 현황과 함께 **지역별 미래 고령화율 및 중·고교 입학생 수** 예측을 제공합니다.")
 
 # ==========================================
 # 2. 데이터 불러오기 및 전처리
@@ -44,18 +44,12 @@ def load_population_data():
     df["전체인구"] = df[total_cols].sum(axis=1)
     df["고령인구"] = df[elderly_cols].sum(axis=1)
     
-    # 중학 입학(만 12세) / 고교 입학(만 15세) 열 존재 여부 확인 후 가져오기
-    df["중학입학인구"] = df["계_12세"] if "계_12세" in df.columns else 0
-    df["고교입학인구"] = df["계_15세"] if "계_15세" in df.columns else 0
-
     # 연도 및 시군구 단위로 집계
     sigungu_df = df.groupby(["연도", "sigungu_code"]).agg({
         "시도": "first",
         "시군구": "first",
         "전체인구": "sum",
-        "고령인구": "sum",
-        "중학입학인구": "sum",
-        "고교입학인구": "sum"
+        "고령인구": "sum"
     }).reset_index()
     
     # 고령화율(%) 계산
@@ -72,7 +66,7 @@ def load_population_data():
     labels = ["19% 미만", "19% 이상 ~ 23% 미만", "23% 이상 ~ 28% 미만", "28% 이상 ~ 38% 미만", "38% 이상"]
     sigungu_df["고령화 구간"] = pd.cut(sigungu_df["고령화율"], bins=bins, labels=labels, right=False)
     
-    # 미래 학령인구 추정을 위해 최신 연도(2026년)의 0~15세 연령별 인구 보존
+    # 미래 학령인구 추정을 위해 최신 연도 인구 보존
     latest_year = df["연도"].max()
     df_latest_age = df[df["연도"] == latest_year].copy()
     
@@ -80,19 +74,37 @@ def load_population_data():
 
 @st.cache_data
 def load_geojson():
-    """시군구 GeoJSON 경계 데이터를 불러옵니다."""
+    """시군구 GeoJSON 경계 데이터 및 중심 좌표(핀 표기용)를 계산해 불러옵니다."""
     geojson_url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/boundaries/sigungu_kr.geojson"
     response = requests.get(geojson_url)
-    return response.json()
+    geojson = response.json()
+    
+    # 각 시군구의 중심점 좌표 계산 (핀 표시 목적)
+    centers = {}
+    for feature in geojson["features"]:
+        code = feature["properties"]["코드"]
+        geom = feature["geometry"]
+        coords = []
+        if geom["type"] == "Polygon":
+            coords = geom["coordinates"][0]
+        elif geom["type"] == "MultiPolygon":
+            for poly in geom["coordinates"]:
+                coords.extend(poly[0])
+        if coords:
+            lons = [c[0] for c in coords]
+            lats = [c[1] for c in coords]
+            centers[code] = (np.mean(lats), np.mean(lons))
+            
+    return geojson, centers
 
 # 데이터 로딩
 sigungu_yearly, df_latest_age, max_year = load_population_data()
-geojson_data = load_geojson()
+geojson_data, geo_centers = load_geojson()
 
 min_year = int(sigungu_yearly["연도"].min())
 
 # ==========================================
-# 3. 사이드바 설정 (연도 선택 및 상세 지역 선택)
+# 3. 사이드바 설정 (연도 선택 및 빠른 지역 검색)
 # ==========================================
 st.sidebar.subheader("📌 데이터 설정")
 
@@ -107,10 +119,12 @@ selected_year = st.sidebar.slider(
 valid_regions = [r for r in sigungu_yearly["지역명"].dropna().unique() if r]
 all_regions = ["전국 (전체)"] + sorted(valid_regions)
 
+# 키보드로 타이핑해서 검색할 수 있는 시군구 검색 드롭다운
 selected_region = st.sidebar.selectbox(
-    "🔍 미래 예측 및 상세 분석할 시군구 선택",
+    "🔍 지역 검색 및 선택 (미래 예측)",
     options=all_regions,
-    index=0
+    index=0,
+    help="지역 이름을 입력하여 빠르게 검색할 수 있습니다."
 )
 
 df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
@@ -141,12 +155,12 @@ with kpi4:
 st.markdown("---")
 
 # ==========================================
-# 5. 메인 레이아웃: 지도 & 예측/추이 그래프
+# 5. 메인 레이아웃: 지도 (핀 표시) & 미래 예측 그래프
 # ==========================================
 col_map, col_chart = st.columns([1.1, 0.9])
 
 # ------------------------------------------
-# (좌) 지도 시각화
+# (좌) 지도 시각화 (선택한 시군구 핀 마커 표시)
 # ------------------------------------------
 with col_map:
     st.subheader(f"🗺️ 전국 시군구 고령화 지도 ({selected_year}년)")
@@ -173,6 +187,33 @@ with col_map:
         zoom=6.0,
         mapbox_style="white-bg"
     )
+
+    # 특정 시군구 선택 시 지도 위에 핀(Marker) 표기
+    if selected_region != "전국 (전체)":
+        selected_row = df_year[df_year["지역명"] == selected_region]
+        if len(selected_row) > 0:
+            target_code = selected_row.iloc[0]["sigungu_code"]
+            if target_code in geo_centers:
+                lat, lon = geo_centers[target_code]
+                
+                # 붉은색 핀 마커 추가
+                fig_map.add_trace(go.Scattermapbox(
+                    lat=[lat],
+                    lon=[lon],
+                    mode="markers+text",
+                    marker=dict(size=14, color="red"),
+                    text=[f"📍 {selected_region}"],
+                    textposition="top center",
+                    name="선택된 지역"
+                ))
+                # 지도 중심점을 해당 시군구 위치로 변경
+                fig_map.update_layout(
+                    mapbox=dict(
+                        center=dict(lat=lat, lon=lon),
+                        zoom=8.0
+                    )
+                )
+
     fig_map.update_layout(margin={"r":0, "t":10, "l":0, "b":0}, height=550)
     st.plotly_chart(fig_map, use_container_width=True)
 
@@ -188,7 +229,7 @@ with col_chart:
         # 선형 회귀 분석을 통한 2035년까지의 미래 고령화율 예측
         X = reg_df["연도"].values
         y = reg_df["고령화율"].values
-        poly = np.polyfit(X, y, 1)  # 1차 선형 방정식
+        poly = np.polyfit(X, y, 1)
         
         future_years = np.arange(max_year + 1, 2036)
         future_y = np.polyval(poly, future_years).round(1)
@@ -225,7 +266,7 @@ with col_chart:
         )
         st.plotly_chart(fig_pred, use_container_width=True)
     else:
-        st.warning("👈 **사이드바에서 특정 시군구를 선택**하시면 2035년까지의 미래 고령화율 예측을 보실 수 있습니다.")
+        st.warning("👈 **사이드바에서 검색창을 이용해 특정 시군구를 선택**하시면 핀 표시와 함께 2035년까지의 미래 예측을 보실 수 있습니다.")
 
 st.markdown("---")
 
@@ -235,7 +276,6 @@ st.markdown("---")
 if selected_region != "전국 (전체)":
     st.subheader(f"🎓 {selected_region} - 미래 중·고등학교 입학생 수 예측")
     
-    # 선택된 지역의 최신 0~15세 연령별 인구 가져오기
     df_reg_age = df_latest_age.copy()
     df_reg_age["시도"] = df_reg_age["시도"].fillna("")
     df_reg_age["시군구"] = df_reg_age["시군구"].fillna("")
@@ -243,20 +283,13 @@ if selected_region != "전국 (전체)":
     
     reg_latest = df_reg_age[df_reg_age["지역명"] == selected_region]
 
-    # 현재 0~12세 인구를 기반으로 미래 연도별 중1(만 12세) / 고1(만 15세) 입학생 수 예측
     years_ahead = []
     mid_school_pred = []
     high_school_pred = []
 
-    # 최근 3개년 과거 실제 입학생 수
-    past_years = [max_year - 2, max_year - 1, max_year]
-    past_df = sigungu_yearly[(sigungu_yearly["지역명"] == selected_region) & (sigungu_yearly["연도"].isin(past_years))]
-    
-    # 미래 예측 (최신 연도 2026년 인구 코호트 활용)
     if len(reg_latest) > 0:
         row = reg_latest.iloc[0]
         
-        # 미래 6년 간 예측
         for i in range(1, 7):
             f_year = max_year + i
             years_ahead.append(f_year)
@@ -273,7 +306,6 @@ if selected_region != "전국 (전체)":
             high_val = row[high_col] if (target_high_age >= 0 and high_col in row) else 0
             high_school_pred.append(high_val)
 
-        # 차트 생성을 위한 데이터프레임 결합
         df_students = pd.DataFrame({
             "연도": [str(y) for y in years_ahead],
             "중학교 입학 예정자 (만 12세)": mid_school_pred,
@@ -311,23 +343,34 @@ if selected_region != "전국 (전체)":
             st.caption("※ 본 예측은 전출입 이동이 없다는 가정하에 현재 연령별 인구수(코호트)를 추적한 결과입니다.")
 
 # ==========================================
-# 7. 하단 데이터 표 (상위 10개 & 하위 10개)
+# 7. 하단 간소화된 상위/하위 10개 지역 요약 표
 # ==========================================
 st.markdown("---")
-st.subheader(f"📋 {selected_year}년 고령화율 상위 & 하위 10개 지역")
+st.subheader(f"📊 {selected_year}년 고령화율 상위 & 하위 10개 지역 (간단 요약)")
 
 col1, col2 = st.columns(2)
 
-top10 = df_year.sort_values(by="고령화율", ascending=False).head(10)
-top10_display = top10[["시도", "시군구", "고령화율", "전체인구", "고령인구"]].reset_index(drop=True)
+# 간단한 양식으로 데이터 정리
+top10_simple = (
+    df_year.sort_values(by="고령화율", ascending=False)
+    .head(10)[["지역명", "고령화율"]]
+    .reset_index(drop=True)
+)
+top10_simple.index = top10_simple.index + 1  # 1위부터 표시
+top10_simple.columns = ["지역명", "고령화율 (%)"]
 
-bottom10 = df_year.sort_values(by="고령화율", ascending=True).head(10)
-bottom10_display = bottom10[["시도", "시군구", "고령화율", "전체인구", "고령인구"]].reset_index(drop=True)
+bottom10_simple = (
+    df_year.sort_values(by="고령화율", ascending=True)
+    .head(10)[["지역명", "고령화율"]]
+    .reset_index(drop=True)
+)
+bottom10_simple.index = bottom10_simple.index + 1  # 1위부터 표시
+bottom10_simple.columns = ["지역명", "고령화율 (%)"]
 
 with col1:
-    st.markdown("🔴 **고령화율 가장 높은 10곳**")
-    st.dataframe(top10_display, use_container_width=True)
+    st.markdown("🔴 **고령화율 가장 높은 지역 Top 10**")
+    st.dataframe(top10_simple, use_container_width=True)
 
 with col2:
-    st.markdown("🔵 **고령화율 가장 낮은 10곳**")
-    st.dataframe(bottom10_display, use_container_width=True)
+    st.markdown("🔵 **고령화율 가장 낮은 지역 Top 10**")
+    st.dataframe(bottom10_simple, use_container_width=True)

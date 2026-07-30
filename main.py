@@ -15,7 +15,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 모던 핀테크/사스(SaaS) 스타일 커스텀 CSS
+# 모던 스타일링 CSS
 st.markdown("""
 <style>
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
@@ -104,7 +104,7 @@ st.markdown("""
 st.markdown("""
 <div class="dashboard-header">
     <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
-    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 고령화율 예측 · 고령인구 규모 분석</div>
+    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 지자체 1:1 수치 비교 서비스</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -258,11 +258,12 @@ with k4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. 메인 탭 구성 (핵심 3개로 압축)
+# 5. 메인 탭 구성
 # ==========================================
-tab_map, tab_scatter, tab_tree = st.tabs([
+tab_map, tab_compare, tab_scatter, tab_tree = st.tabs([
     "🗺️ 전국 지도 & 미래 예측", 
-    "🎯 고령인구 규모 vs 고령화율 분석 (신규)",
+    "⚔️ 지자체 1:1 비교",
+    "🎯 고령인구 규모 vs 비율 분석",
     "🔲 시·도 계층별 트리맵"
 ])
 
@@ -357,14 +358,115 @@ with tab_map:
             st.info("👈 사이드바에서 특정 **시군구**를 선택하면 해당 지자체의 2035년 미래 예측 그래프를 보실 수 있습니다.")
 
 # ------------------------------------------
-# TAB 2: 신규 시각화 - 버블 산점도 분석
+# TAB 2: 신규 추가 - 지자체 1:1 비교
+# ------------------------------------------
+with tab_compare:
+    st.markdown("##### ⚔️ 두 지자체 간 1:1 수치 및 추이 직접 비교")
+    st.caption("비교하고 싶은 두 지자체를 자유롭게 선택하여 고령화율과 인구 규모를 다각도로 대조합니다.")
+
+    # 드롭다운 필터 (두 개)
+    col_sel1, col_sel2 = st.columns(2)
+    
+    region_list = sorted(valid_regions)
+    
+    default_idx1 = region_list.index("충청남도 공주시") if "충청남도 공주시" in region_list else 0
+    default_idx2 = region_list.index("충청남도 아산시") if "충청남도 아산시" in region_list else min(1, len(region_list)-1)
+
+    with col_sel1:
+        region_A = st.selectbox("🔵 첫 번째 비교 지자체 (A)", options=region_list, index=default_idx1)
+    with col_sel2:
+        region_B = st.selectbox("🔴 두 번째 비교 지자체 (B)", options=region_list, index=default_idx2)
+
+    if region_A and region_B:
+        df_A = df_year[df_year["지역명"] == region_A].iloc[0]
+        df_B = df_year[df_year["지역명"] == region_B].iloc[0]
+
+        # 1. 수치 요약 비교 카드
+        c_kpi1, c_kpi2 = st.columns(2)
+        with c_kpi1:
+            st.info(f"""
+            **🔵 {region_A} ({selected_year}년 기준)**
+            - **고령화율:** `{df_A['고령화율']}%` (전국 {df_A['전국순위']}위)
+            - **전체 인구:** `{df_A['전체인구']:,}명`
+            - **65세 이상 인구:** `{df_A['고령인구']:,}명`
+            """)
+        with c_kpi2:
+            st.warning(f"""
+            **🔴 {region_B} ({selected_year}년 기준)**
+            - **고령화율:** `{df_B['고령화율']}%` (전국 {df_B['전국순위']}위)
+            - **전체 인구:** `{df_B['전체인구']:,}명`
+            - **65세 이상 인구:** `{df_B['고령인구']:,}명`
+            """)
+
+        # 2. 10년간 고령화율 추이 선 그래프 비교
+        col_c1, col_c2 = st.columns(2)
+        
+        with col_c1:
+            st.markdown("##### 📈 연도별 고령화율 추이 비교 (%)")
+            
+            trend_A = sigungu_yearly[sigungu_yearly["지역명"] == region_A].sort_values("연도")
+            trend_B = sigungu_yearly[sigungu_yearly["지역명"] == region_B].sort_values("연도")
+
+            nat_trend = sigungu_yearly.groupby("연도").apply(
+                lambda x: (x["고령인구"].sum() / x["전체인구"].sum()) * 100
+            ).reset_index(name="전국평균")
+
+            fig_comp_line = go.Figure()
+            
+            fig_comp_line.add_trace(go.Scatter(
+                x=nat_trend["연도"], y=nat_trend["전국평균"].round(1),
+                mode="lines", name="전국 평균", line=dict(color="#94a3b8", width=2, dash="dash")
+            ))
+            fig_comp_line.add_trace(go.Scatter(
+                x=trend_A["연도"], y=trend_A["고령화율"],
+                mode="lines+markers", name=f"🔵 {region_A}", line=dict(color="#2563eb", width=3)
+            ))
+            fig_comp_line.add_trace(go.Scatter(
+                x=trend_B["연도"], y=trend_B["고령화율"],
+                mode="lines+markers", name=f"🔴 {region_B}", line=dict(color="#ef4444", width=3)
+            ))
+
+            fig_comp_line.update_layout(
+                xaxis=dict(title="연도", dtick=1),
+                yaxis=dict(title="고령화율 (%)"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin={"r":10, "t":10, "l":10, "b":10},
+                height=380
+            )
+            st.plotly_chart(fig_comp_line, use_container_width=True)
+
+        with col_c2:
+            st.markdown(f"##### 📊 {selected_year}년 인구 구조 직접 비교 (명)")
+            
+            comp_pop_df = pd.DataFrame({
+                "구분": ["전체 인구", "65세 이상 인구"],
+                f"🔵 {region_A}": [df_A["전체인구"], df_A["고령인구"]],
+                f"🔴 {region_B}": [df_B["전체인구"], df_B["고령인구"]]
+            })
+
+            fig_comp_bar = px.bar(
+                comp_pop_df,
+                x="구분",
+                y=[f"🔵 {region_A}", f"🔴 {region_B}"],
+                barmode="group",
+                color_discrete_sequence=["#2563eb", "#ef4444"]
+            )
+            fig_comp_bar.update_layout(
+                yaxis=dict(title="인원수 (명)"),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin={"r":10, "t":10, "l":10, "b":10},
+                height=380
+            )
+            st.plotly_chart(fig_comp_bar, use_container_width=True)
+
+# ------------------------------------------
+# TAB 3: 버블 산점도 분석
 # ------------------------------------------
 with tab_scatter:
     st.markdown("##### 🎯 65세 이상 절대 인구수 vs 고령화 비율 (4분면 매트릭스)")
     st.caption("비율만 높은 군 단위 지자체와, 비율은 낮아도 실제 노인 수가 많은 대도시 지자체의 특성을 한눈에 비교합니다.")
 
     avg_rate = df_year["고령화율"].mean()
-    avg_pop = df_year["고령인구"].mean()
 
     fig_bubble = px.scatter(
         df_year,
@@ -374,18 +476,16 @@ with tab_scatter:
         color="시도",
         hover_name="지역명",
         hover_data={"전체인구": ":,명", "고령인구": ":,명", "고령화율": ":.1f%"},
-        log_x=True,  # 인구 차이가 크므로 로그 스케일 적용
+        log_x=True,
         labels={"고령인구": "65세 이상 인구수 (명, 로그 스케일)", "고령화율": "고령화 비율 (%)"}
     )
 
-    # 평균 가이드라인 추가
     fig_bubble.add_hline(y=avg_rate, line_dash="dash", line_color="red", annotation_text=f"전국 평균 비율 ({avg_rate:.1f}%)")
-
     fig_bubble.update_layout(height=580, margin={"r":10, "t":30, "l":10, "b":10})
     st.plotly_chart(fig_bubble, use_container_width=True)
 
 # ------------------------------------------
-# TAB 3: 시도 트리맵
+# TAB 4: 시도 트리맵
 # ------------------------------------------
 with tab_tree:
     st.markdown("##### 🔲 시·도별 시군구 계층 구조 트리맵")

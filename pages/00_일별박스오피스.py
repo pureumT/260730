@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import random
+import time
 import urllib.parse
 from zoneinfo import ZoneInfo
 import pandas as pd
@@ -11,28 +12,7 @@ import streamlit as st
 # 1. 페이지 테마 & 기본 설정
 # ==========================================
 st.set_page_config(
-    page_title="🍿 팝콘 랩 (Popcorn Lab)",
-    page_icon="🎬",
-    layout="wide",
-)
-
-# 커스텀 CSS로 UI 스타일링 강화
-st.markdown(
-    """
-    <style>
-    .stButton>button {
-        border-radius: 12px;
-        font-weight: bold;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid #ff4b4b;
-    }
-    </style>
-""",
-    unsafe_allow_html=True,
+    page_title="🍿 팝콘 오락실 & 박스오피스", page_icon="🎬", layout="wide"
 )
 
 # ==========================================
@@ -90,14 +70,13 @@ def fetch_box_office(target_dt_str):
 today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
 default_yesterday = (today_kst - timedelta(days=1)).date()
 
-# 상태 관리 (날짜, 퀴즈, 한줄평)
+# 게임 세션 상태 초기화
 if "target_date" not in st.session_state:
     st.session_state.target_date = default_yesterday
-if "comments" not in st.session_state:
-    st.session_state.comments = [
-        ("익명 팝콘", "이날 1위 영화 영화관에서 진짜 재미있게 봄! 🍿"),
-        ("영화덕후", "매출 점유율 독식 보소 ㄷㄷ"),
-    ]
+if "game_score" not in st.session_state:
+    st.session_state.game_score = 0
+if "game_combo" not in st.session_state:
+    st.session_state.game_combo = 0
 
 
 def set_random_date():
@@ -115,10 +94,10 @@ def on_date_change():
 
 
 # ==========================================
-# 3. 🎯 UX 개편: 히어로 헤더 & 컨트롤 패널
+# 3. 최상단 컨트롤러
 # ==========================================
-st.title("🍿 팝콘 랩 (Popcorn Lab)")
-st.caption("과거 영화 탐색부터 꿀잼 퀴즈, 실시간 데이터 분석까지!")
+st.title("🍿 팝콘 오락실 & 박스오피스 Hub")
+st.caption("데이터 분석부터 극장가 미니게임까지 즐겨보세요!")
 
 with st.container():
     c1, c2, c3 = st.columns([2, 1, 1])
@@ -134,7 +113,7 @@ with st.container():
         st.write(" ")
         st.write(" ")
         st.button(
-            "🎲 **랜덤 과거로!**",
+            "🎲 **랜덤 타임머신**",
             on_click=set_random_date,
             use_container_width=True,
         )
@@ -157,111 +136,175 @@ df, err = fetch_box_office(target_dt)
 
 if err:
     st.error(f"🚨 {err}")
-    st.warning("다른 날짜를 선택하거나 API 키를 확인하세요.")
     st.stop()
 
-# 파생 데이터
-df["avg_price"] = (df["salesAmt"] / df["audiCnt"].replace(0, 1)).round(0)
 top = df.sort_values("rank").iloc[0]
 
 # ==========================================
-# 5. 🌟 메인 비주얼 UX: 1위 영화 카드 & 예고편
+# 5. 🎮 탭 구성 (미니게임 강화!)
 # ==========================================
-st.subheader(f"🏆 {current_date.strftime('%Y-%m-%d')} 영예의 1위")
-
-col_left, col_right = st.columns([1, 1])
-
-with col_left:
-    is_new = top["rankOldAndNew"] == "NEW"
-    badge = "✨ NEW! 갓 개봉한 신작" if is_new else "🏛️ OLD 흥행 유지작"
-
-    st.markdown(f"### **<{top['movieNm']}>**")
-    st.caption(f"태그: {badge} | 개봉일: {top['openDt']}")
-
-    m1, m2 = st.columns(2)
-    m1.metric("🍿 관객수", f"{int(top['audiCnt']):,} 명")
-    m2.metric(
-        "💵 당일 매출액",
-        f"{int(top['salesAmt']/10000):,} 만원",
-        delta=f"{top['salesChange']:.1f}%",
-    )
-
-    # 🔗 외부 미디어 연동 UX (유튜브 예고편 / 다음 영화 검색)
-    yt_query = urllib.parse.quote(f"{top['movieNm']} 예고편")
-    daum_query = urllib.parse.quote(f"영화 {top['movieNm']}")
-
-    st.markdown(
-        f"""
-    👉 [▶️ **유튜브에서 예고편 보기**](https://www.youtube.com/results?search_query={yt_query})  
-    👉 [🔍 **다음 영화에서 포스터/정보 보기**](https://search.daum.net/search?w=tot&q={daum_query})
-    """
-    )
-
-with col_right:
-    # 파이 차트로 매출 독과점 직관적 시각화
-    fig_pie = px.pie(
-        df,
-        values="salesShare",
-        names="movieNm",
-        title="🎬 당일 시장 점유율 파이",
-        hole=0.4,
-    )
-    fig_pie.update_layout(
-        margin=dict(t=30, b=0, l=0, r=0), height=220, showlegend=False
-    )
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-st.divider()
-
-# ==========================================
-# 6. 🎮 꿀잼 기능 모음 (탭 구성)
-# ==========================================
-tab1, tab2, tab3, tab4 = st.tabs(
-    [
-        "📊 전체 순위 & 주식창",
-        "🎯 미니게임: 티켓값 맞추기",
-        "💬 실시간 한줄평 코너",
-        "💡 스크린/티켓 단가 분석",
-    ]
+tab1, tab2, tab3 = st.tabs(
+    ["🎮 팝콘 오락실 (미니게임 2종)", "🏆 1위 영화 & 비주얼", "📊 순위 & 주식창"]
 )
 
 # ------------------------------------------
-# TAB 1: 순위 & 주식창 (UX 가독성 개선)
+# TAB 1: 🎮 팝콘 오락실 (게임성 극대화!)
 # ------------------------------------------
 with tab1:
-    st.subheader("📈 당일 극장가 주식창 (매출 변동률)")
+    st.subheader("🎮 팝콘 오락실에 오신 것을 환영합니다!")
 
-    surge_df = df.sort_values("salesChange", ascending=False)
-    up = surge_df.iloc[0]
-    down = surge_df.iloc[-1]
-
-    c_u, c_d = st.columns(2)
-    c_u.success(
-        f"🚀 **오늘의 떡상:** <{up['movieNm']}> (전일 대비 +{up['salesChange']:.1f}%)"
-    )
-    c_d.error(
-        f"📉 **오늘의 떡락:** <{down['movieNm']}> (전일 대비 {down['salesChange']:.1f}%)"
+    game_type = st.radio(
+        "**놀고 싶은 게임을 선택하세요:**",
+        ["🎰 1. 오늘의 영화 가차 (슬롯머신)", "🔥 2. 관객수 UP & DOWN 퀴즈"],
+        horizontal=True,
     )
 
+    st.write("---")
+
+    # ------------------------------------
+    # 게임 1: 슬롯머신 (뽑기)
+    # ------------------------------------
+    if "슬롯머신" in game_type:
+        st.markdown("### 🎰 팝콘 영화 가차 (Slot Machine)")
+        st.caption(
+            "버튼을 누르면 슬롯이 돌아가며 박스오피스 TOP 10 중 1편이 무작위로 당첨됩니다!"
+        )
+
+        slot_col, res_col = st.columns([1, 2])
+
+        with slot_col:
+            st.image(
+                "https://em-content.zobj.net/source/skype/289/slot-machine_1f3b0.png",
+                width=120,
+            )
+            spin_btn = st.button(
+                "🎰 **레버 당기기! (SPIN)**", use_container_width=True
+            )
+
+        with res_col:
+            if spin_btn:
+                # 슬롯머신 돌아가는 연출
+                placeholder = st.empty()
+                movies = df["movieNm"].tolist()
+
+                for _ in range(12):
+                    temp_movie = random.choice(movies)
+                    placeholder.markdown(f"## 🌀 **[{temp_movie}]** ...")
+                    time.sleep(0.08)
+
+                # 최종 결과
+                picked_row = df.sample(1).iloc[0]
+                placeholder.empty()
+
+                if picked_row["rank"] == 1:
+                    st.balloons()
+                    st.success(
+                        f"🎉 **JACKPOT! 1위 영화가 당첨되었습니다!**\n\n### 🎬 <{picked_row['movieNm']}> (당일 관객수: {picked_row['audiCnt']:,}명)"
+                    )
+                else:
+                    st.info(
+                        f"✨ **당첨!** {picked_row['rank']}위 영화가 나왔습니다.\n\n### 🎬 <{picked_row['movieNm']}>"
+                    )
+
+                yt_query = urllib.parse.quote(f"{picked_row['movieNm']} 예고편")
+                st.markdown(
+                    f"👉 [▶️ **유튜브에서 이 영화 예고편 보기**](https://www.youtube.com/results?search_query={yt_query})"
+                )
+
+    # ------------------------------------
+    # 게임 2: UP & DOWN 연속 퀴즈
+    # ------------------------------------
+    else:
+        st.markdown("### 🔥 관객수 UP & DOWN 아케이드")
+        st.caption(
+            "선택한 날짜의 데이터를 바탕으로 문제를 풉니다. 콤보를 쌓아 최고 기록을 세워보세요!"
+        )
+
+        # 게임 스코어 보드
+        sc1, sc2 = st.columns(2)
+        sc1.metric("현재 점수", f"{st.session_state.game_score} 점")
+        sc2.metric("🔥 연속 콤보", f"{st.session_state.game_combo} 회")
+
+        st.write("---")
+
+        # 2위 영화 vs 1위 영화 절반 관객수 비교 문제
+        movie_1st = df.iloc[0]
+        movie_2nd = df.iloc[1] if len(df) > 1 else df.iloc[0]
+
+        half_1st_audi = movie_1st["audiCnt"] / 2
+        actual_2nd_audi = movie_2nd["audiCnt"]
+
+        st.markdown(
+            f"**Q. 2위 영화 <{movie_2nd['movieNm']}>의 어제 관객수는 1위 영화 <{movie_1st['movieNm']}> 관객수 절반({int(half_1st_audi):,}명)보다 많을까요, 적을까요?**"
+        )
+
+        btn_col1, btn_col2 = st.columns(2)
+
+        is_up = actual_2nd_audi > half_1st_audi
+
+        if btn_col1.button("▲ **UP (더 많다!)**", use_container_width=True):
+            if is_up:
+                st.balloons()
+                st.success(
+                    f"⭕ **정답입니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
+                )
+                st.session_state.game_score += 10
+                st.session_state.game_combo += 1
+            else:
+                st.error(
+                    f"❌ **틀렸습니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
+                )
+                st.session_state.game_combo = 0
+
+        if btn_col2.button("▼ **DOWN (더 적다!)**", use_container_width=True):
+            if not is_up:
+                st.balloons()
+                st.success(
+                    f"⭕ **정답입니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
+                )
+                st.session_state.game_score += 10
+                st.session_state.game_combo += 1
+            else:
+                st.error(
+                    f"❌ **틀렸습니다!** (<{movie_2nd['movieNm']}> 관객수: {actual_2nd_audi:,}명)"
+                )
+                st.session_state.game_combo = 0
+
+# ------------------------------------------
+# TAB 2: 🏆 1위 영화 & 비주얼
+# ------------------------------------------
+with tab2:
+    st.subheader(f"🏆 {current_date.strftime('%Y-%m-%d')} 영예의 1위")
+
+    col_left, col_right = st.columns([1, 1])
+    with col_left:
+        st.markdown(f"### **<{top['movieNm']}>**")
+        m1, m2 = st.columns(2)
+        m1.metric("🍿 관객수", f"{int(top['audiCnt']):,} 명")
+        m2.metric("💵 당일 매출액", f"{int(top['salesAmt']/10000):,} 만원")
+
+        daum_query = urllib.parse.quote(f"영화 {top['movieNm']}")
+        st.markdown(
+            f"👉 [🔍 **포스터 & 줄거리 보러가기**](https://search.daum.net/search?w=tot&q={daum_query})"
+        )
+
+    with col_right:
+        fig_pie = px.pie(
+            df,
+            values="salesShare",
+            names="movieNm",
+            title="🎬 당일 시장 점유율 파이",
+            hole=0.4,
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+# ------------------------------------------
+# TAB 3: 📊 순위 & 주식창
+# ------------------------------------------
+with tab3:
     st.subheader("📋 전체 박스오피스 TOP 10")
-    disp = df.copy()
-    disp["구분"] = disp["rankOldAndNew"].apply(
-        lambda x: "✨ NEW" if x == "NEW" else "OLD"
-    )
-    disp["매출(만원)"] = (disp["salesAmt"] / 10000).astype(int)
-
     st.dataframe(
-        disp[
-            [
-                "rank",
-                "구분",
-                "movieNm",
-                "openDt",
-                "audiCnt",
-                "매출(만원)",
-                "salesShare",
-            ]
-        ].rename(
+        df[["rank", "movieNm", "openDt", "audiCnt", "salesShare"]].rename(
             columns={
                 "rank": "순위",
                 "movieNm": "영화명",
@@ -273,68 +316,3 @@ with tab1:
         use_container_width=True,
         hide_index=True,
     )
-
-# ------------------------------------------
-# TAB 2: 🎮 미니게임 (참여형 컨텐츠)
-# ------------------------------------------
-with tab2:
-    st.subheader("🎯 1위 영화 티켓 단가 맞추기 미니게임!")
-    st.caption(
-        f"선택한 날짜(<{top['movieNm']}>)의 **1인당 평균 티켓값**은 얼마였을까요?"
-    )
-
-    actual_price = int(top["avg_price"])
-
-    user_guess = st.number_input(
-        "예상하는 티켓 가격을 입력하세요 (원):",
-        value=10000,
-        step=500,
-    )
-
-    if st.button("정답 확인하기! 🎲"):
-        diff = abs(user_guess - actual_price)
-        if diff == 0:
-            st.balloons()
-            st.success(
-                f"🎉 **대박! 완벽한 정답입니다!** 실제 평균 단가: **{actual_price:,}원**"
-            )
-        elif diff <= 1000:
-            st.success(
-                f"👏 **아까워요! 거의 맞췄습니다.** 실제 평균 단가: **{actual_price:,}원** (오차 {diff:,}원)"
-            )
-        else:
-            st.warning(
-                f"😅 **틀렸습니다!** 실제 평균 단가: **{actual_price:,}원** (차이: {diff:,}원)"
-            )
-
-# ------------------------------------------
-# TAB 3: 💬 실시간 한줄평 (커뮤니티 요소)
-# ------------------------------------------
-with tab3:
-    st.subheader(f"💬 {current_date.strftime('%Y-%m-%d')} 극장가 한줄평")
-
-    # 댓글 입력폼
-    with st.form("comment_form", clear_on_submit=True):
-        nickname = st.text_input("닉네임", value="익명 팝콘")
-        comment_text = st.text_input("한줄평을 남겨보세요!")
-        submitted = st.form_submit_button("등록하기 🚀")
-
-        if submitted and comment_text:
-            st.session_state.comments.insert(0, (nickname, comment_text))
-            st.rerun()
-
-    st.write("---")
-    # 댓글 목록 출력
-    for nick, text in st.session_state.comments[:10]:
-        st.markdown(f"**👤 {nick}**: {text}")
-
-# ------------------------------------------
-# TAB 4: 티켓 단가 & 스크린 분석
-# ------------------------------------------
-with tab4:
-    st.subheader("💡 영화별 1인당 평균 티켓 단가 (원)")
-    st.caption(
-        "IMAX/4DX 등 특별관 비율이 높거나 성인 관람객 비중이 높으면 단가가 올라갑니다."
-    )
-
-    st.bar_chart(df.set_index("movieNm")["avg_price"])

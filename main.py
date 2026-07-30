@@ -6,64 +6,76 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # ==========================================
-# 1. 페이지 기본 설정 & 모던 커스텀 CSS
+# 1. 페이지 설정 및 트렌디 대시보드 CSS
 # ==========================================
 st.set_page_config(
-    page_title="전국 고령화 빅데이터 대시보드",
-    page_icon="⚡",
+    page_title="대한민국 고령화 인사이더 대시보드",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# 모던/트렌디 스타일링 CSS 적용
+# 모던 핀테크/사스(SaaS) 스타일 커스텀 CSS
 st.markdown("""
 <style>
-    /* 메인 배경 및 기본 폰트 */
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    
+    * {
+        font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+    }
+    
     .stApp {
-        background-color: #f8fafc;
+        background-color: #f1f5f9;
     }
     
-    /* 헤더 타이틀 스타일 */
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* 모던 KPI 카드 디자인 (Glassmorphism) */
-    .kpi-card {
-        background: rgba(255, 255, 255, 0.9);
+    /* 대시보드 헤더 */
+    .dashboard-header {
+        background: #ffffff;
+        padding: 24px 32px;
+        border-radius: 20px;
         border: 1px solid #e2e8f0;
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+        margin-bottom: 24px;
     }
-    .kpi-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
-    }
-    .kpi-title {
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #64748b;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 8px;
-    }
-    .kpi-value {
+    
+    .header-title {
         font-size: 1.8rem;
         font-weight: 800;
         color: #0f172a;
+        letter-spacing: -0.5px;
     }
-    .kpi-sub {
-        font-size: 0.8rem;
-        color: #3b82f6;
-        font-weight: 500;
+    
+    .header-sub {
+        font-size: 0.95rem;
+        color: #64748b;
         margin-top: 4px;
+    }
+    
+    /* 모던 KPI 카드 */
+    .kpi-box {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    }
+    .kpi-label {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .kpi-val {
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin: 6px 0;
+    }
+    .kpi-desc {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #3b82f6;
     }
 
     /* 탭 스타일 개편 */
@@ -71,32 +83,36 @@ st.markdown("""
         gap: 8px;
         background-color: #e2e8f0;
         padding: 6px;
-        border-radius: 12px;
+        border-radius: 14px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 42px;
-        border-radius: 8px;
-        font-weight: 600;
-        color: #475569;
+        height: 44px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 0.95rem;
+        color: #64748b;
     }
     .stTabs [aria-selected="true"] {
         background-color: #ffffff !important;
-        color: #1e293b !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        color: #0f172a !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
     }
 </style>
 """, unsafe_allow_html=True)
 
 # 헤더 영역
-st.markdown('<div class="main-header">⚡ 전국 고령화 시계열 빅데이터 대시보드</div>', unsafe_allow_html=True)
-st.markdown("<p style='color: #64748b; font-size: 1.05rem; margin-bottom: 2rem;'>2015년~2026년 인구 데이터 기반 고령화 지형도 · 2035 미래 예측 · 시도별 트리맵 인사이더</p>", unsafe_allow_html=True)
+st.markdown("""
+<div class="dashboard-header">
+    <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
+    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 고령화율 예측 · 고령인구 규모 분석</div>
+</div>
+""", unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 불러오기 및 전처리
+# 2. 데이터 처리 (캐싱 적용)
 # ==========================================
 @st.cache_data
 def load_population_data():
-    """인구 데이터를 불러오고 연도별·시군구별 고령화율을 계산합니다."""
     pop_url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/population_yearly.csv.gz"
     df = pd.read_csv(pop_url, dtype={"코드": str})
     
@@ -139,10 +155,9 @@ def load_population_data():
 
 @st.cache_data
 def load_geojson():
-    """시군구 GeoJSON 경계 데이터 및 중심 좌표를 계산해 불러옵니다."""
     geojson_url = "https://raw.githubusercontent.com/greatsong/modudata/main/data/boundaries/sigungu_kr.geojson"
-    response = requests.get(geojson_url)
-    geojson = response.json()
+    res = requests.get(geojson_url)
+    geojson = res.json()
     
     centers = {}
     for feature in geojson["features"]:
@@ -166,12 +181,12 @@ geojson_data, geo_centers = load_geojson()
 min_year = int(sigungu_yearly["연도"].min())
 
 # ==========================================
-# 3. 사이드바 컨트롤
+# 3. 사이드바 검색 컨트롤
 # ==========================================
-st.sidebar.markdown("### ⚙️ 컨트롤 파넬")
+st.sidebar.markdown("### ⚙️ 분석 제어판")
 
 selected_year = st.sidebar.slider(
-    "📅 지도 연도 선택",
+    "📅 데이터 분석 연도",
     min_value=min_year,
     max_value=max_year,
     value=max_year,
@@ -182,7 +197,7 @@ valid_regions = [r for r in sigungu_yearly["지역명"].dropna().unique() if r]
 all_regions = ["전국 (전체)"] + sorted(valid_regions)
 
 selected_region = st.sidebar.selectbox(
-    "🔍 분석 지자체 타겟팅",
+    "🔍 타겟 시군구 검색",
     options=all_regions,
     index=0
 )
@@ -190,7 +205,7 @@ selected_region = st.sidebar.selectbox(
 df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
 
 # ==========================================
-# 4. 상단 KPI 커스텀 카드 영역
+# 4. 상단 KPI 요약 카드리스트
 # ==========================================
 nat_total_pop = df_year["전체인구"].sum()
 nat_elderly_pop = df_year["고령인구"].sum()
@@ -206,61 +221,59 @@ k1, k2, k3, k4 = st.columns(4)
 
 with k1:
     st.markdown(f'''
-    <div class="kpi-card">
-        <div class="kpi-title">🌐 전국 평균 고령화율 ({selected_year}년)</div>
-        <div class="kpi-value">{nat_aging_rate}%</div>
-        <div class="kpi-sub">총 인구 {nat_total_pop:,}명 기준</div>
+    <div class="kpi-box">
+        <div class="kpi-label">전국 평균 고령화율</div>
+        <div class="kpi-val">{nat_aging_rate}%</div>
+        <div class="kpi-desc">전체인구 {nat_total_pop:,}명</div>
     </div>
     ''', unsafe_allow_html=True)
 
 with k2:
     st.markdown(f'''
-    <div class="kpi-card">
-        <div class="kpi-title">🚨 초고령 지자체 (20% 이상)</div>
-        <div class="kpi-value">{super_aged_count}개</div>
-        <div class="kpi-sub" style="color:#ef4444;">전국 시군구의 {super_aged_ratio}%</div>
+    <div class="kpi-box">
+        <div class="kpi-label">초고령 지자체 (20%↑)</div>
+        <div class="kpi-val">{super_aged_count}곳</div>
+        <div class="kpi-desc" style="color:#ef4444;">전국 지자체의 {super_aged_ratio}%</div>
     </div>
     ''', unsafe_allow_html=True)
 
 with k3:
     st.markdown(f'''
-    <div class="kpi-card">
-        <div class="kpi-title">🔴 최고 고령화 지역</div>
-        <div class="kpi-value">{top_region_row["고령화율"]}%</div>
-        <div class="kpi-sub" style="color:#dc2626;">{top_region_row["지역명"]}</div>
+    <div class="kpi-box">
+        <div class="kpi-label">최고 고령화 지자체</div>
+        <div class="kpi-val">{top_region_row["고령화율"]}%</div>
+        <div class="kpi-desc" style="color:#dc2626;">{top_region_row["지역명"]}</div>
     </div>
     ''', unsafe_allow_html=True)
 
 with k4:
     st.markdown(f'''
-    <div class="kpi-card">
-        <div class="kpi-title">🔵 최저 고령화 지역</div>
-        <div class="kpi-value">{bottom_region_row["고령화율"]}%</div>
-        <div class="kpi-sub" style="color:#2563eb;">{bottom_region_row["지역명"]}</div>
+    <div class="kpi-box">
+        <div class="kpi-label">최저 고령화 지자체</div>
+        <div class="kpi-val">{bottom_region_row["고령화율"]}%</div>
+        <div class="kpi-desc" style="color:#2563eb;">{bottom_region_row["지역명"]}</div>
     </div>
     ''', unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. 메인 대시보드 탭 구성
+# 5. 메인 탭 구성 (핵심 3개로 압축)
 # ==========================================
-tab_main, tab_treemap, tab_timelapse, tab_dday, tab_rank = st.tabs([
-    "🗺️ 지도 & 미래 예측", 
-    "🔲 시도별 인터랙티브 트리맵",
-    "🎞️ 10년 고령화 타임랩스", 
-    "🚨 초고령사회 진입 D-Day", 
-    "🏎️ 순위 변동 & 가속도"
+tab_map, tab_scatter, tab_tree = st.tabs([
+    "🗺️ 전국 지도 & 미래 예측", 
+    "🎯 고령인구 규모 vs 고령화율 분석 (신규)",
+    "🔲 시·도 계층별 트리맵"
 ])
 
 # ------------------------------------------
-# TAB 1: 지도 및 미래 예측
+# TAB 1: 전국 지도 및 2035 예측
 # ------------------------------------------
-with tab_main:
-    col_map, col_chart = st.columns([1.1, 0.9])
+with tab_map:
+    col_m, col_p = st.columns([1.1, 0.9])
 
-    with col_map:
-        st.markdown(f"#### 🗺️ {selected_year}년 전국 시군구 고령화 지도")
+    with col_m:
+        st.markdown(f"##### 🗺️ {selected_year}년 전국 시군구 고령화 지도")
 
         color_discrete_map = {
             "19% 미만": "#e0f2fe",
@@ -298,20 +311,15 @@ with tab_main:
                         marker=dict(size=14, color="#ef4444"),
                         text=[f"📍 {selected_region}"],
                         textposition="top center",
-                        name="선택 지역"
+                        name="선택 지자체"
                     ))
                     fig_map.update_layout(mapbox=dict(center=dict(lat=lat, lon=lon), zoom=8.0))
 
-        fig_map.update_layout(
-            margin={"r":0, "t":10, "l":0, "b":0}, 
-            height=530,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
+        fig_map.update_layout(margin={"r":0, "t":10, "l":0, "b":0}, height=530)
         st.plotly_chart(fig_map, use_container_width=True)
 
-    with col_chart:
-        st.markdown("#### 🔮 2035년 미래 고령화율 예측")
+    with col_p:
+        st.markdown("##### 🔮 2035년 미래 고령화율 예측")
 
         if selected_region != "전국 (전체)":
             reg_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
@@ -331,31 +339,57 @@ with tab_main:
             fig_pred.add_trace(go.Scatter(
                 x=np.append(X[-1], future_years), y=np.append(y[-1], future_y),
                 mode="lines+markers", name="예측치",
-                line=dict(color="#f43f5e", width=3, dash="dot")
+                line=dict(color="#ef4444", width=3, dash="dot")
             ))
 
             pred_2035 = future_y[-1]
-            st.success(f"📍 **{selected_region} 분석 카드**\n- 현재 ({max_year}년): **{y[-1]}%**\n- 2035년 예상: **{pred_2035}%** (`+{round(pred_2035 - y[-1], 1)}%p` 증가 예상)")
+            st.info(f"📍 **{selected_region} 분석**\n- {max_year}년 현재: **{y[-1]}%**\n- 2035년 예상: **{pred_2035}%** (`+{round(pred_2035 - y[-1], 1)}%p` 상승 추세)")
 
             fig_pred.update_layout(
                 xaxis=dict(title="연도", dtick=2),
                 yaxis=dict(title="고령화율 (%)"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin={"r":10, "t":10, "l":10, "b":10},
-                height=400,
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)'
+                height=420
             )
             st.plotly_chart(fig_pred, use_container_width=True)
         else:
-            st.info("👈 사이드바 필터에서 특정 **시군구**를 선택하시면 2035년 시점까지의 인구 고령화 트렌드 예측 그래프를 볼 수 있습니다.")
+            st.info("👈 사이드바에서 특정 **시군구**를 선택하면 해당 지자체의 2035년 미래 예측 그래프를 보실 수 있습니다.")
 
 # ------------------------------------------
-# TAB 2: 트리맵 (Treemap)
+# TAB 2: 신규 시각화 - 버블 산점도 분석
 # ------------------------------------------
-with tab_treemap:
-    st.markdown(f"#### 🔲 {selected_year}년 시·도 및 시군구 인구 계층 트리맵")
-    st.caption("네모 박스를 클릭하면 원하는 시·도 내부의 시군구 구조로 계층 이동이 가능합니다.")
+with tab_scatter:
+    st.markdown("##### 🎯 65세 이상 절대 인구수 vs 고령화 비율 (4분면 매트릭스)")
+    st.caption("비율만 높은 군 단위 지자체와, 비율은 낮아도 실제 노인 수가 많은 대도시 지자체의 특성을 한눈에 비교합니다.")
+
+    avg_rate = df_year["고령화율"].mean()
+    avg_pop = df_year["고령인구"].mean()
+
+    fig_bubble = px.scatter(
+        df_year,
+        x="고령인구",
+        y="고령화율",
+        size="전체인구",
+        color="시도",
+        hover_name="지역명",
+        hover_data={"전체인구": ":,명", "고령인구": ":,명", "고령화율": ":.1f%"},
+        log_x=True,  # 인구 차이가 크므로 로그 스케일 적용
+        labels={"고령인구": "65세 이상 인구수 (명, 로그 스케일)", "고령화율": "고령화 비율 (%)"}
+    )
+
+    # 평균 가이드라인 추가
+    fig_bubble.add_hline(y=avg_rate, line_dash="dash", line_color="red", annotation_text=f"전국 평균 비율 ({avg_rate:.1f}%)")
+
+    fig_bubble.update_layout(height=580, margin={"r":10, "t":30, "l":10, "b":10})
+    st.plotly_chart(fig_bubble, use_container_width=True)
+
+# ------------------------------------------
+# TAB 3: 시도 트리맵
+# ------------------------------------------
+with tab_tree:
+    st.markdown("##### 🔲 시·도별 시군구 계층 구조 트리맵")
+    st.caption("네모 박스를 클릭하면 원하는 시·도 내 시군구 구조로 드릴다운(Zoom-in) 탐색이 가능합니다.")
 
     fig_tree = px.treemap(
         df_year,
@@ -369,152 +403,26 @@ with tab_treemap:
     fig_tree.update_layout(margin={"r":0, "t":30, "l":0, "b":0}, height=580)
     st.plotly_chart(fig_tree, use_container_width=True)
 
-# ------------------------------------------
-# TAB 3: 타임랩스 애니메이션
-# ------------------------------------------
-with tab_timelapse:
-    st.markdown("#### 🎞️ 2015~2026 고령화 시계열 애니메이션")
-    st.caption("재생 버튼(▶)을 누르면 전국의 고령화 진행속도를 다이나믹하게 시각화합니다.")
-
-    fig_anim = px.choropleth_mapbox(
-        sigungu_yearly.sort_values("연도"),
-        geojson=geojson_data,
-        locations="sigungu_code",
-        featureidkey="properties.코드",
-        color="고령화율",
-        color_continuous_scale="Reds",
-        range_color=[10, 45],
-        animation_frame="연도",
-        hover_name="지역명",
-        hover_data={"시도": True, "시군구": True, "고령화율": ":.1f%", "sigungu_code": False},
-        center={"lat": 35.8, "lon": 127.8},
-        zoom=6.0,
-        mapbox_style="white-bg"
-    )
-    fig_anim.update_layout(margin={"r":0, "t":10, "l":0, "b":0}, height=580)
-    st.plotly_chart(fig_anim, use_container_width=True)
-
-# ------------------------------------------
-# TAB 4: 초고령사회 진입 D-Day
-# ------------------------------------------
-with tab_dday:
-    st.markdown("#### 🚨 지자체별 초고령사회(20%) 진입 분석 카드")
-
-    dday_list = []
-    for reg, grp in sigungu_yearly.groupby("지역명"):
-        grp = grp.sort_values("연도")
-        super_aged = grp[grp["고령화율"] >= 20.0]
-        
-        if len(super_aged) > 0:
-            first_entry_year = int(super_aged.iloc[0]["연도"])
-            status = f"✅ {first_entry_year}년 진입"
-            d_day = first_entry_year - max_year
-        else:
-            X = grp["연도"].values
-            y = grp["고령화율"].values
-            poly = np.polyfit(X, y, 1)
-            if poly[0] > 0:
-                est_year = int((20.0 - poly[1]) / poly[0])
-                status = f"⏳ {est_year}년 진입 예정"
-                d_day = est_year - max_year
-            else:
-                status = "🟢 유지 예상"
-                d_day = 999
-                
-        curr_rate_series = grp[grp["연도"] == max_year]["고령화율"]
-        if not curr_rate_series.empty:
-            curr_rate = curr_rate_series.values[0]
-        else:
-            curr_rate = grp.iloc[-1]["고령화율"]
-
-        dday_list.append({
-            "지역명": reg,
-            f"{max_year}년 고령화율": f"{curr_rate}%",
-            "상태": status,
-            "D-Day (연)": d_day if d_day != 999 else "-"
-        })
-
-    df_dday = pd.DataFrame(dday_list)
-
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        st.markdown("##### 🔴 초고령사회 진입 완료 지자체")
-        st.dataframe(df_dday[df_dday["상태"].str.contains("진입") & ~df_dday["상태"].str.contains("예정")].reset_index(drop=True), use_container_width=True)
-
-    with col_d2:
-        st.markdown("##### ⏳ 초고령사회 진입 임박 지자체 (미래 진입)")
-        st.dataframe(df_dday[df_dday["상태"].str.contains("예정")].sort_values("D-Day (연)").reset_index(drop=True), use_container_width=True)
-
-# ------------------------------------------
-# TAB 5: 순위 변동 & 가속도
-# ------------------------------------------
-with tab_rank:
-    st.markdown("#### 🏎️ 10년 고령화 순위 급상승 & 가속도 분석")
-    
-    df_min = sigungu_yearly[sigungu_yearly["연도"] == min_year][["sigungu_code", "지역명", "고령화율", "전국순위"]]
-    df_max = sigungu_yearly[sigungu_yearly["연도"] == max_year][["sigungu_code", "고령화율", "전국순위"]]
-
-    rank_diff = pd.merge(df_min, df_max, on="sigungu_code", suffixes=(f"_{min_year}", f"_{max_year}"))
-
-    rank_diff["순위 상승폭 (계단)"] = rank_diff[f"전국순위_{min_year}"] - rank_diff[f"전국순위_{max_year}"]
-    rank_diff["고령화율 증가폭 (%p)"] = (rank_diff[f"고령화율_{max_year}"] - rank_diff[f"고령화율_{min_year}"]).round(1)
-
-    rank_diff = rank_diff[[
-        "지역명", 
-        f"고령화율_{min_year}", 
-        f"고령화율_{max_year}", 
-        f"전국순위_{min_year}", 
-        f"전국순위_{max_year}", 
-        "순위 상승폭 (계단)", 
-        "고령화율 증가폭 (%p)"
-    ]]
-    rank_diff.columns = [
-        "지역명", 
-        f"{min_year}년 고령화율", 
-        f"{max_year}년 고령화율", 
-        f"{min_year}년 순위", 
-        f"{max_year}년 순위", 
-        "순위 상승폭 (계단)", 
-        "고령화율 증가폭 (%p)"
-    ]
-
-    col_r1, col_r2 = st.columns(2)
-    with col_r1:
-        st.markdown("##### 📈 고령화 순위가 가장 급상승한 지역")
-        st.dataframe(rank_diff.sort_values(by="순위 상승폭 (계단)", ascending=False).head(10).reset_index(drop=True), use_container_width=True)
-
-    with col_r2:
-        st.markdown("##### ⚡ 고령화 속도(%p)가 가장 빠른 지역")
-        st.dataframe(rank_diff.sort_values(by="고령화율 증가폭 (%p)", ascending=False).head(10).reset_index(drop=True), use_container_width=True)
-
 # ==========================================
-# 6. 하단 요약 데이터 카드
+# 6. 하단 데이터 정리
 # ==========================================
 st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown(f"### 📋 {selected_year}년 고령화율 극단 지역 (Top 10 / Bottom 10)")
+st.markdown(f"##### 📋 {selected_year}년 고령화율 극단 지자체 (Top 10 / Bottom 10)")
 
 col1, col2 = st.columns(2)
 
-top10_simple = (
-    df_year.sort_values(by="고령화율", ascending=False)
-    .head(10)[["지역명", "고령화율"]]
-    .reset_index(drop=True)
-)
-top10_simple.index = top10_simple.index + 1
-top10_simple.columns = ["지역명", "고령화율 (%)"]
+top10 = df_year.sort_values(by="고령화율", ascending=False).head(10)[["지역명", "고령화율"]].reset_index(drop=True)
+top10.index = top10.index + 1
+top10.columns = ["지역명", "고령화율 (%)"]
 
-bottom10_simple = (
-    df_year.sort_values(by="고령화율", ascending=True)
-    .head(10)[["지역명", "고령화율"]]
-    .reset_index(drop=True)
-)
-bottom10_simple.index = bottom10_simple.index + 1
-bottom10_simple.columns = ["지역명", "고령화율 (%)"]
+bottom10 = df_year.sort_values(by="고령화율", ascending=True).head(10)[["지역명", "고령화율"]].reset_index(drop=True)
+bottom10.index = bottom10.index + 1
+bottom10.columns = ["지역명", "고령화율 (%)"]
 
 with col1:
-    st.markdown("🔴 **고령화율 상위 10개 지역**")
-    st.dataframe(top10_simple, use_container_width=True)
+    st.markdown("🔴 **고령화율 가장 높은 지역 Top 10**")
+    st.dataframe(top10, use_container_width=True)
 
 with col2:
-    st.markdown("🔵 **고령화율 하위 10개 지역**")
-    st.dataframe(bottom10_simple, use_container_width=True)
+    st.markdown("🔵 **고령화율 가장 낮은 지역 Top 10**")
+    st.dataframe(bottom10, use_container_width=True)

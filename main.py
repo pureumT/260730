@@ -104,7 +104,7 @@ st.markdown("""
 st.markdown("""
 <div class="dashboard-header">
     <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
-    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 지자체 1:1 수치 비교 서비스</div>
+    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 지자체 1:1 수치 비교 및 위험 등급 진단 리포트</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -181,7 +181,7 @@ geojson_data, geo_centers = load_geojson()
 min_year = int(sigungu_yearly["연도"].min())
 
 # ==========================================
-# 3. 사이드바 검색 컨트롤
+# 3. 사이드바 검색 컨트롤 및 다운로드 파트
 # ==========================================
 st.sidebar.markdown("### ⚙️ 분석 제어판")
 
@@ -203,6 +203,30 @@ selected_region = st.sidebar.selectbox(
 )
 
 df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
+
+# 데이터 다운로드 버튼 파트 (사이드바 하단)
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📥 데이터 다운로드")
+
+# 1) 전체 연도 필터링 데이터 다운로드
+csv_year_data = df_year[["연도", "시도", "시군구", "지역명", "전체인구", "고령인구", "고령화율", "전국순위"]].to_csv(index=False).encode('utf-8-sig')
+st.sidebar.download_button(
+    label=f"📊 {selected_year}년 전국 시군구 CSV 받기",
+    data=csv_year_data,
+    file_name=f"korea_aging_{selected_year}.csv",
+    mime="text/csv"
+)
+
+# 2) 선택된 특정 지자체 10년 추이 데이터 다운로드
+if selected_region != "전국 (전체)":
+    reg_history_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region][["연도", "시도", "시군구", "전체인구", "고령인구", "고령화율", "전국순위"]].sort_values("연도")
+    csv_reg_data = reg_history_df.to_csv(index=False).encode('utf-8-sig')
+    st.sidebar.download_button(
+        label=f"💾 {selected_region} 10년 추이 CSV 받기",
+        data=csv_reg_data,
+        file_name=f"{selected_region}_history.csv",
+        mime="text/csv"
+    )
 
 # ==========================================
 # 4. 상단 KPI 요약 카드리스트
@@ -268,7 +292,7 @@ tab_map, tab_compare, tab_scatter, tab_tree = st.tabs([
 ])
 
 # ------------------------------------------
-# TAB 1: 전국 지도 및 2035 예측
+# TAB 1: 전국 지도 및 2035 예측 & 자동 진단 리포트
 # ------------------------------------------
 with tab_map:
     col_m, col_p = st.columns([1.1, 0.9])
@@ -320,7 +344,7 @@ with tab_map:
         st.plotly_chart(fig_map, use_container_width=True)
 
     with col_p:
-        st.markdown("##### 🔮 2035년 미래 고령화율 예측")
+        st.markdown("##### 🔮 고령화 진단 리포트 & 2035년 미래 예측")
 
         if selected_region != "전국 (전체)":
             reg_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
@@ -332,6 +356,40 @@ with tab_map:
             future_years = np.arange(max_year + 1, 2036)
             future_y = np.polyval(poly, future_years).round(1)
 
+            curr_rate = y[-1]
+            pred_2035 = future_y[-1]
+            growth_10y = round(curr_rate - y[0], 1) if len(y) > 0 else 0.0
+
+            # 고령화 위험 등급 자동 진단 로직
+            if curr_rate >= 30.0:
+                risk_level = "🚨 초고위험 단계"
+                risk_color = "error"
+                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 이미 극심한 초고령사회에 진입해 있습니다. 복지 예산 부담 증대 및 유소년 인구 유출 대책이 시급합니다."
+            elif curr_rate >= 20.0:
+                risk_level = "⚠️ 고위험 단계 (초고령사회)"
+                risk_color = "warning"
+                risk_msg = f"**{selected_region}**은(는) UN 기준 초고령사회(20% 이상)에 해당하며, 지난 10년간 고령화율이 **+{growth_10y}%p** 증가하는 빠른 고령화 속도를 보이고 있습니다."
+            elif curr_rate >= 14.0:
+                risk_level = "🟡 주의 단계 (고령사회)"
+                risk_color = "info"
+                risk_msg = f"**{selected_region}**은(는) 고령사회(14% 이상) 수준에 도달해 있으며, 2035년경에는 **{pred_2035}%**까지 상승하여 초고령사회로 진입할 것으로 예상됩니다."
+            else:
+                risk_level = "🟢 양호 단계 (고령화사회 이하)"
+                risk_color = "success"
+                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 전국 평균 대비 비교적 젊은 인구 구조를 유지하고 있습니다."
+
+            # 진단 리포트 출력
+            st.markdown(f"**[진단 결과: {risk_level}]**")
+            if risk_color == "error":
+                st.error(risk_msg)
+            elif risk_color == "warning":
+                st.warning(risk_msg)
+            elif risk_color == "info":
+                st.info(risk_msg)
+            else:
+                st.success(risk_msg)
+
+            # 예측 그래프
             fig_pred = go.Figure()
             fig_pred.add_trace(go.Scatter(
                 x=X, y=y, mode="lines+markers", name="관측치",
@@ -343,30 +401,25 @@ with tab_map:
                 line=dict(color="#ef4444", width=3, dash="dot")
             ))
 
-            pred_2035 = future_y[-1]
-            st.info(f"📍 **{selected_region} 분석**\n- {max_year}년 현재: **{y[-1]}%**\n- 2035년 예상: **{pred_2035}%** (`+{round(pred_2035 - y[-1], 1)}%p` 상승 추세)")
-
             fig_pred.update_layout(
                 xaxis=dict(title="연도", dtick=2),
                 yaxis=dict(title="고령화율 (%)"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                 margin={"r":10, "t":10, "l":10, "b":10},
-                height=420
+                height=340
             )
             st.plotly_chart(fig_pred, use_container_width=True)
         else:
-            st.info("👈 사이드바에서 특정 **시군구**를 선택하면 해당 지자체의 2035년 미래 예측 그래프를 보실 수 있습니다.")
+            st.info("👈 사이드바 필터에서 특정 **시군구**를 선택하시면 지자체 자동 진단 리포트와 2035년 미래 예측 그래프를 확인할 수 있습니다.")
 
 # ------------------------------------------
-# TAB 2: 신규 추가 - 지자체 1:1 비교
+# TAB 2: 지자체 1:1 비교
 # ------------------------------------------
 with tab_compare:
     st.markdown("##### ⚔️ 두 지자체 간 1:1 수치 및 추이 직접 비교")
     st.caption("비교하고 싶은 두 지자체를 자유롭게 선택하여 고령화율과 인구 규모를 다각도로 대조합니다.")
 
-    # 드롭다운 필터 (두 개)
     col_sel1, col_sel2 = st.columns(2)
-    
     region_list = sorted(valid_regions)
     
     default_idx1 = region_list.index("충청남도 공주시") if "충청남도 공주시" in region_list else 0
@@ -381,7 +434,6 @@ with tab_compare:
         df_A = df_year[df_year["지역명"] == region_A].iloc[0]
         df_B = df_year[df_year["지역명"] == region_B].iloc[0]
 
-        # 1. 수치 요약 비교 카드
         c_kpi1, c_kpi2 = st.columns(2)
         with c_kpi1:
             st.info(f"""
@@ -398,7 +450,6 @@ with tab_compare:
             - **65세 이상 인구:** `{df_B['고령인구']:,}명`
             """)
 
-        # 2. 10년간 고령화율 추이 선 그래프 비교
         col_c1, col_c2 = st.columns(2)
         
         with col_c1:
@@ -412,7 +463,6 @@ with tab_compare:
             ).reset_index(name="전국평균")
 
             fig_comp_line = go.Figure()
-            
             fig_comp_line.add_trace(go.Scatter(
                 x=nat_trend["연도"], y=nat_trend["전국평균"].round(1),
                 mode="lines", name="전국 평균", line=dict(color="#94a3b8", width=2, dash="dash")

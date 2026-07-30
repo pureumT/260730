@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 st.title("📊 전국 시군구 고령화 시계열 빅데이터 대시보드")
-st.markdown("2015년~2026년 10년 이상의 인구 빅데이터를 기반으로 **고령화 타임랩스, 진입 D-Day, 미래 학령인구 예측**을 제공합니다.")
+st.markdown("2015년~2026년 10년 이상의 인구 빅데이터를 기반으로 **고령화 지도, 트리맵, D-Day, 미래 학령인구 예측**을 제공합니다.")
 
 # ==========================================
 # 2. 데이터 불러오기 및 전처리
@@ -44,13 +44,25 @@ def load_population_data():
     df["전체인구"] = df[total_cols].sum(axis=1)
     df["고령인구"] = df[elderly_cols].sum(axis=1)
     
-    # 연도 및 시군구 단위로 집계
-    sigungu_df = df.groupby(["연도", "sigungu_code"]).agg({
+    # 학령인구 예측을 위한 0~15세 연령별 열 목록 확보
+    age_cols_dict = {}
+    for a in range(16):
+        col_name = f"계_{a}세"
+        if col_name in df.columns:
+            age_cols_dict[a] = col_name
+
+    # 집계 방식 지정
+    agg_dict = {
         "시도": "first",
         "시군구": "first",
         "전체인구": "sum",
         "고령인구": "sum"
-    }).reset_index()
+    }
+    for a, c_name in age_cols_dict.items():
+        agg_dict[c_name] = "sum"
+
+    # 연도 및 시군구 단위로 집계
+    sigungu_df = df.groupby(["연도", "sigungu_code"]).agg(agg_dict).reset_index()
     
     # 고령화율(%) 계산
     sigungu_df["고령화율"] = (sigungu_df["고령인구"] / sigungu_df["전체인구"]) * 100
@@ -66,14 +78,12 @@ def load_population_data():
     labels = ["19% 미만", "19% 이상 ~ 23% 미만", "23% 이상 ~ 28% 미만", "28% 이상 ~ 38% 미만", "38% 이상"]
     sigungu_df["고령화 구간"] = pd.cut(sigungu_df["고령화율"], bins=bins, labels=labels, right=False)
     
-    # 연도별 전국 순위 계산 (1위: 고령화율이 가장 높은 지역)
+    # 연도별 전국 순위 계산
     sigungu_df["전국순위"] = sigungu_df.groupby("연도")["고령화율"].rank(ascending=False, method="min").astype(int)
     
-    # 미래 학령인구 추정을 위해 최신 연도 인구 보존
-    latest_year = df["연도"].max()
-    df_latest_age = df[df["연도"] == latest_year].copy()
+    latest_year = int(sigungu_df["연도"].max())
     
-    return sigungu_df, df_latest_age, latest_year
+    return sigungu_df, latest_year
 
 @st.cache_data
 def load_geojson():
@@ -82,7 +92,6 @@ def load_geojson():
     response = requests.get(geojson_url)
     geojson = response.json()
     
-    # 각 시군구의 중심점 좌표 계산 (핀 표시 목적)
     centers = {}
     for feature in geojson["features"]:
         code = feature["properties"]["코드"]
@@ -101,7 +110,7 @@ def load_geojson():
     return geojson, centers
 
 # 데이터 로딩
-sigungu_yearly, df_latest_age, max_year = load_population_data()
+sigungu_yearly, max_year = load_population_data()
 geojson_data, geo_centers = load_geojson()
 
 min_year = int(sigungu_yearly["연도"].min())
@@ -159,15 +168,16 @@ st.markdown("---")
 # ==========================================
 # 5. 탭 구성 (시계열 빅데이터 다각도 분석)
 # ==========================================
-tab_main, tab_timelapse, tab_dday, tab_rank = st.tabs([
+tab_main, tab_treemap, tab_timelapse, tab_dday, tab_rank = st.tabs([
     "🗺️ 지도 & 미래 예측", 
+    "🔲 네모네모 트리맵 (시도별 드릴다운)",
     "🎞️ 10년 고령화 타임랩스", 
     "🚨 초고령사회 진입 D-Day", 
     "🏎️ 순위 변동 & 가속도"
 ])
 
 # ------------------------------------------
-# TAB 1: 지도 및 미래 예측 (기존 핵심 화면)
+# TAB 1: 지도 및 미래 예측
 # ------------------------------------------
 with tab_main:
     col_map, col_chart = st.columns([1.1, 0.9])
@@ -250,17 +260,13 @@ with tab_main:
         else:
             st.warning("👈 **사이드바에서 검색창을 이용해 특정 시군구를 선택**하시면 핀 표시와 함께 2035년까지의 미래 예측을 보실 수 있습니다.")
 
-    # 학령인구 예측
+    # 학령인구 예측 (개선)
     if selected_region != "전국 (전체)":
         st.markdown("---")
         st.subheader(f"🎓 {selected_region} - 미래 중·고등학교 입학생 수 예측")
         
-        df_reg_age = df_latest_age.copy()
-        df_reg_age["시도"] = df_reg_age["시도"].fillna("")
-        df_reg_age["시군구"] = df_reg_age["시군구"].fillna("")
-        df_reg_age["지역명"] = (df_reg_age["시도"] + " " + df_reg_age["시군구"]).str.strip()
-        
-        reg_latest = df_reg_age[df_reg_age["지역명"] == selected_region]
+        # 선택한 연도(선택한 데이터) 기준 해당 시군구의 행 가져오기
+        reg_latest = df_year[df_year["지역명"] == selected_region]
 
         years_ahead = []
         mid_school_pred = []
@@ -268,17 +274,22 @@ with tab_main:
 
         if len(reg_latest) > 0:
             row = reg_latest.iloc[0]
+            base_y = int(row["연도"])
+            
             for i in range(1, 7):
-                f_year = max_year + i
+                f_year = base_y + i
                 years_ahead.append(f_year)
+                
+                # 중1(만 12세 입학): 현재 (12 - i)세 인구
                 target_mid_age = 12 - i
                 mid_col = f"계_{target_mid_age}세"
-                mid_val = row[mid_col] if (target_mid_age >= 0 and mid_col in row) else 0
+                mid_val = int(row[mid_col]) if (target_mid_age >= 0 and mid_col in row) else 0
                 mid_school_pred.append(mid_val)
                 
+                # 고1(만 15세 입학): 현재 (15 - i)세 인구
                 target_high_age = 15 - i
                 high_col = f"계_{target_high_age}세"
-                high_val = row[high_col] if (target_high_age >= 0 and high_col in row) else 0
+                high_val = int(row[high_col]) if (target_high_age >= 0 and high_col in row) else 0
                 high_school_pred.append(high_val)
 
             df_students = pd.DataFrame({
@@ -287,12 +298,14 @@ with tab_main:
                 "고등학교 입학 예정자 (만 15세)": high_school_pred
             })
 
-            col_sch1, col_sch2 = st.columns([1, 1])
+            col_sch1, col_sch2 = st.columns([1.1, 0.9])
             with col_sch1:
                 fig_sch = px.bar(
                     df_students, x="연도", y=["중학교 입학 예정자 (만 12세)", "고등학교 입학 예정자 (만 15세)"],
-                    barmode="group", title="향후 6년간 입학 예정자 수 추이 (명)", color_discrete_sequence=["#3b82f6", "#f59e0b"]
+                    barmode="group", title=f"향후 6년간({years_ahead[0]}~{years_ahead[-1]}) 입학 예정자 추이 (명)",
+                    color_discrete_sequence=["#3b82f6", "#f59e0b"]
                 )
+                fig_sch.update_layout(xaxis_title="연도", yaxis_title="인원수 (명)", legend_title_text="구분")
                 st.plotly_chart(fig_sch, use_container_width=True)
 
             with col_sch2:
@@ -302,13 +315,34 @@ with tab_main:
                 diff_mid = future_mid - curr_mid
                 st.write(f"- **{years_ahead[0]}년 예상 중1 입학생:** `{curr_mid:,}명`")
                 st.write(f"- **{years_ahead[-1]}년 예상 중1 입학생:** `{future_mid:,}명` (`{diff_mid:+,}명` 변화)")
+                
                 if diff_mid < 0:
-                    st.warning("⚠️ **학령인구 감소 경고**: 유소년 인구 감소로 인해 관내 학교 감축 가능성이 높습니다.")
+                    st.warning("⚠️ **학령인구 감소 경고**: 유소년 인구 감소로 관내 학교 감축 가능성이 높습니다.")
                 else:
-                    st.success("✅ **학령인구 유지**: 관내 입학 예정자 인원이 일정 수준 이상 유지되고 있습니다.")
+                    st.success("✅ **학령인구 유지/증가**: 관내 입학 예정자 인원이 일정 수준 이상 유지되고 있습니다.")
+                st.caption("※ 본 예측은 전출입 이동이 없다는 가정하에 선택 연도의 연령별 인구(코호트)를 추적한 결과입니다.")
 
 # ------------------------------------------
-# TAB 2: 10년 고령화 타임랩스 애니메이션
+# TAB 2: 인터랙티브 트리맵 (시도 -> 시군구)
+# ------------------------------------------
+with tab_treemap:
+    st.subheader(f"🔲 {selected_year}년 시·도별 시군구 고령화 트리맵 (Treemap)")
+    st.markdown("👉 **시·도 네모 상자(예: 경상남도, 경기도)**를 클릭하면 해당 시도의 시군구별 계층으로 들어가서 볼 수 있습니다.")
+
+    fig_tree = px.treemap(
+        df_year,
+        path=[px.Constant("전국"), "시도", "시군구"],
+        values="전체인구",
+        color="고령화율",
+        color_continuous_scale="Reds",
+        range_color=[10, 45],
+        hover_data={"고령화율": ":.1f%", "전체인구": ":,명", "고령인구": ":,명"}
+    )
+    fig_tree.update_layout(margin={"r":0, "t":30, "l":0, "b":0}, height=600)
+    st.plotly_chart(fig_tree, use_container_width=True)
+
+# ------------------------------------------
+# TAB 3: 10년 고령화 타임랩스 애니메이션
 # ------------------------------------------
 with tab_timelapse:
     st.subheader("🎞️ 2015~2026 대한민국 고령화 타임랩스")
@@ -333,13 +367,12 @@ with tab_timelapse:
     st.plotly_chart(fig_anim, use_container_width=True)
 
 # ------------------------------------------
-# TAB 3: 초고령사회(20%) 진입 D-Day 분석
+# TAB 4: 초고령사회(20%) 진입 D-Day 분석
 # ------------------------------------------
 with tab_dday:
     st.subheader("🚨 초고령사회 (고령화율 20% 이상) 진입 연도 및 D-Day 분석")
     st.markdown("UN 기준 고령화율 20% 이상을 **초고령사회**로 정의합니다. 각 지자체의 진입 완료 연도 및 향후 진입 예상 시점을 산출합니다.")
 
-    # 각 지자체별 초고령사회 진입 연도 계산
     dday_list = []
     for reg, grp in sigungu_yearly.groupby("지역명"):
         grp = grp.sort_values("연도")
@@ -350,11 +383,9 @@ with tab_dday:
             status = f"✅ {first_entry_year}년 진입 완료"
             d_day = first_entry_year - max_year
         else:
-            # 미래 진입 연도 선형 예측
             X = grp["연도"].values
             y = grp["고령화율"].values
             poly = np.polyfit(X, y, 1)
-            # y = ax + b -> x = (20 - b) / a
             if poly[0] > 0:
                 est_year = int((20.0 - poly[1]) / poly[0])
                 status = f"⏳ {est_year}년 진입 예상"
@@ -363,7 +394,6 @@ with tab_dday:
                 status = "🟢 유지 예상"
                 d_day = 999
                 
-        # 최근 존재하는 연도의 고령화율 안전 추출
         curr_rate_series = grp[grp["연도"] == max_year]["고령화율"]
         if not curr_rate_series.empty:
             curr_rate = curr_rate_series.values[0]
@@ -389,12 +419,11 @@ with tab_dday:
         st.dataframe(df_dday[df_dday["초고령사회 상태"].str.contains("진입 예상")].sort_values("D-Day (연)").reset_index(drop=True), use_container_width=True)
 
 # ------------------------------------------
-# TAB 4: 순위 변동 & 고령화 가속도
+# TAB 5: 순위 변동 & 고령화 가속도
 # ------------------------------------------
 with tab_rank:
     st.subheader("🏎️ 지난 10년 고령화 순위 변동 & 가속도 Top 10")
     
-    # sigungu_code(고유 코드) 기준으로 병합하여 중복 라벨 에러 방지
     df_min = sigungu_yearly[sigungu_yearly["연도"] == min_year][["sigungu_code", "지역명", "고령화율", "전국순위"]]
     df_max = sigungu_yearly[sigungu_yearly["연도"] == max_year][["sigungu_code", "고령화율", "전국순위"]]
 

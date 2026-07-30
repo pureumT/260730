@@ -1,28 +1,22 @@
 from datetime import datetime, timedelta
+import random
 from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 import streamlit as st
 
 # ==========================================
-# 1. 페이지 설정 및 기본 구성
+# 1. 페이지 설정
 # ==========================================
 st.set_page_config(
-    page_title="🎬 올인원 영화 박스오피스 Hub",
-    page_icon="🍿",
+    page_title="🍿 팝콘 타임머신 & 박스오피스",
+    page_icon="🎬",
     layout="wide",
 )
-
-st.title("🎬 올인원 영화 박스오피스 인사이트 Hub")
-st.caption(
-    "어제 박스오피스부터 과거 추억 탐색, 흥행 추세 및 스크린 효율 분석까지 한눈에 확인하세요."
-)
-
 
 # ==========================================
 # 2. API 키 및 공통 함수 (캐싱 적용)
 # ==========================================
-# Secrets에서 API 키 확인
 if "KOBIS_KEY" not in st.secrets:
     st.error(
         "🚨 **st.secrets['KOBIS_KEY']가 설정되지 않았습니다.** Secrets에 키를 입력해 주세요."
@@ -33,7 +27,6 @@ KOBIS_KEY = st.secrets["KOBIS_KEY"]
 API_URL = "https://www.kobis.or.kr/kobisopenapi/webservice/rest/boxoffice/searchDailyBoxOfficeList.json"
 
 
-# API 호출 함수 (속도 향상을 위해 캐싱 적용)
 @st.cache_data(ttl=3600)
 def fetch_box_office(target_dt_str):
     try:
@@ -46,7 +39,6 @@ def fetch_box_office(target_dt_str):
             return None, f"HTTP 오류 ({res.status_code})"
 
         data = res.json()
-
         if "faultInfo" in data:
             return (
                 None,
@@ -58,8 +50,6 @@ def fetch_box_office(target_dt_str):
             return None, "해당 날짜의 데이터가 없습니다."
 
         df = pd.DataFrame(box_list)
-
-        # 문자열 숫자를 정수형으로 변환
         num_cols = [
             "rank",
             "rankInten",
@@ -74,200 +64,188 @@ def fetch_box_office(target_dt_str):
 
         return df, None
     except Exception as e:
-        return None, f"네트워크 요청 오류: {str(e)}"
+        return None, f"네트워크 오류: {str(e)}"
 
 
-# 한국 시간(KST) 기준 어제 날짜 구하기
+# 기준 날짜 계산 (KST 어제)
 today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
 default_yesterday = (today_kst - timedelta(days=1)).date()
 
+# Session State를 이용한 날짜 상태 관리 (랜덤 타임머신 버튼용)
+if "selected_date" not in st.session_state:
+    st.session_state.selected_date = default_yesterday
+
+
 # ==========================================
-# 3. 사이드바: 날짜 선택
+# 3. 🎯 최상단: 타이틀 & 날짜 선택 컨트롤러 (탭 밖으로 배치!)
 # ==========================================
-st.sidebar.header("🔍 조회 설정")
-selected_date = st.sidebar.date_input(
-    "조회할 날짜를 선택하세요",
-    value=default_yesterday,
-    max_value=default_yesterday,  # 오늘 이후 날짜는 선택 불가
+st.title("🍿 팝콘 타임머신 & 박스오피스 Hub")
+st.caption("과거로 떠나는 영화 여행부터 꿀잼 데이터 분석까지!")
+
+# 상단 제어바 (날짜 선택 + 타임머신 버튼)
+ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
+
+with ctrl_col1:
+    # date_input의 상태를 session_state와 연동
+    chosen_date = st.date_input(
+        "📅 **조회할 날짜를 선택하세요**",
+        value=st.session_state.selected_date,
+        max_value=default_yesterday,
+        key="date_picker",
+    )
+    st.session_state.selected_date = chosen_date
+
+with ctrl_col2:
+    st.write(" ")  # 정렬용 여백
+    st.write(" ")
+    # 🎲 랜덤 타임머신 버튼
+    if st.button("🎲 **랜덤 타임머신!**", use_container_width=True):
+        # 2004년 1월 1일 ~ 어제 사이 랜덤 날짜 뽑기
+        start_date = datetime(2004, 1, 1).date()
+        random_days = random.randint(0, (default_yesterday - start_date).days)
+        st.session_state.selected_date = start_date + timedelta(
+            days=random_days
+        )
+        st.rerun()
+
+with ctrl_col3:
+    st.write(" ")
+    st.write(" ")
+    if st.button("🔄 **어제로 돌아가기**", use_container_width=True):
+        st.session_state.selected_date = default_yesterday
+        st.rerun()
+
+current_date = st.session_state.selected_date
+target_dt = current_date.strftime("%Y%m%d")
+
+st.markdown(
+    f"### 📍 현재 탐색 중인 날짜: **{current_date.strftime('%Y년 %m월 %d일')}**"
 )
-target_dt = selected_date.strftime("%Y%m%d")
+st.divider()
 
-st.sidebar.info(f"선택된 날짜: **{selected_date.strftime('%Y년 %m월 %d일')}**")
 
 # ==========================================
-# 4. 3가지 탭 구성
+# 4. 데이터 로드 & 에러 체크
+# ==========================================
+df, err = fetch_box_office(target_dt)
+
+if err:
+    st.error(f"🚨 **{err}**")
+    st.warning(
+        "💡 Secrets의 KOBIS_KEY를 확인하거나 상단에서 다른 날짜를 선택해 보세요."
+    )
+    st.stop()
+
+
+# ==========================================
+# 5. 메인 콘텐츠 탭 구성
 # ==========================================
 tab1, tab2, tab3 = st.tabs(
-    ["📅 일별 순위 & 추억 탐색", "📈 7일간 흥행 추세", "📊 스크린 & 상영 효율"]
+    ["🥇 1위 하이라이트 & 추억", "📈 7일 흥행 추세 & 이슈", "📊 영화관 좌석 효율"]
 )
 
 # ------------------------------------------
-# TAB 1: 일별 순위 & 추억 탐색
+# TAB 1: 1위 영화 하이라이트 & 생일 타임머신
 # ------------------------------------------
 with tab1:
-    df, err = fetch_box_office(target_dt)
+    top = df.sort_values("rank").iloc[0]
 
-    if err:
-        st.error(f"🚨 {err}")
-        st.info(
-            "💡 Secrets의 KOBIS_KEY 값을 확인하거나 다른 날짜를 선택해 보세요."
-        )
-    else:
-        # 1위 영화 하이라이트
-        top = df.sort_values("rank").iloc[0]
-        st.subheader(f"🥇 {selected_date.strftime('%Y년 %m월 %d일')}의 1위 영화")
+    st.subheader(
+        f"🏆 이 날의 챔피언: <{top['movieNm']}>", anchor=False
+    )
 
-        col1, col2, col3 = st.columns(3)
-        col1.metric("영화명", top["movieNm"])
-        col2.metric("당일 관객수", f"{int(top['audiCnt']):,} 명")
-        col3.metric("누적 관객수", f"{int(top['audiAcc']):,} 명")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🎬 영화명", top["movieNm"])
+    c2.metric("🍿 당일 관객수", f"{int(top['audiCnt']):,} 명")
+    c3.metric("🎟️ 누적 관객수", f"{int(top['audiAcc']):,} 명")
+    c4.metric("🖥️ 스크린수", f"{int(top['scrnCnt']):,} 개")
 
-        st.caption(
-            f"💡 **추억 한 스푼:** {selected_date.strftime('%Y년 %m월 %d일')}에는 하루 동안 **{int(top['audiCnt']):,}명**의 관객이 <{top['movieNm']}>을(를) 관람했습니다!"
-        )
+    # 재미 요소: SNS 자랑용 텍스트 복사 카드
+    st.info(
+        f"""
+    📣 **[SNS 공유용 찰진 요약]**  
+    "{current_date.strftime('%Y년 %m월 %d일')} 극장가는 **<{top['movieNm']}>**이(가) 점령했다!  
+    하루 동안 무려 **{int(top['audiCnt']):,}명**이 이 영화를 보며 팝콘을 튀겼습니다 🍿"
+    """
+    )
 
-        st.divider()
+    st.subheader("📋 순위 표")
+    table = df[
+        ["rank", "movieNm", "openDt", "audiCnt", "audiAcc", "scrnCnt"]
+    ].copy()
+    table.columns = ["순위", "영화명", "개봉일", "관객수", "누적관객", "스크린수"]
 
-        # 전체 TOP 10 표
-        st.subheader("📋 전체 박스오피스 TOP 10")
-
-        table = df[
-            ["rank", "movieNm", "openDt", "audiCnt", "audiAcc", "scrnCnt"]
-        ].copy()
-        table.columns = [
-            "순위",
-            "영화명",
-            "개봉일",
-            "관객수",
-            "누적관객",
-            "스크린수",
-        ]
-
-        st.dataframe(
-            table,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "순위": st.column_config.NumberColumn(format="%d위"),
-                "관객수": st.column_config.NumberColumn(format="%d 명"),
-                "누적관객": st.column_config.NumberColumn(format="%d 명"),
-                "스크린수": st.column_config.NumberColumn(format="%d 개"),
-            },
-        )
+    st.dataframe(
+        table,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "순위": st.column_config.NumberColumn(format="%d위"),
+            "관객수": st.column_config.NumberColumn(format="%d 명"),
+            "누적관객": st.column_config.NumberColumn(format="%d 명"),
+            "스크린수": st.column_config.NumberColumn(format="%d 개"),
+        },
+    )
 
 # ------------------------------------------
-# TAB 2: 7일간 흥행 추세
+# TAB 2: 흥행 추세 & 핫이슈 기상도
 # ------------------------------------------
 with tab2:
-    st.subheader(
-        f"📈 {selected_date.strftime('%Y-%m-%d')} 기준 최근 7일간 관객수 추이"
-    )
-    st.caption("선택한 날짜를 포함하여 이전 7일간의 TOP 5 영화 관객 변화입니다.")
+    st.subheader("🔥 극장가 핫이슈 기상도")
 
-    with st.spinner("7일간의 데이터를 수집 중입니다..."):
+    # 역주행 영화 감지
+    df["rankInten"] = df["rankInten"].astype(int)
+    up_movies = df[df["rankInten"] > 0].sort_values(
+        "rankInten", ascending=False
+    )
+
+    if not up_movies.empty:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.success("🚀 **역주행 급상승 영화**")
+            for _, row in up_movies.iterrows():
+                st.write(
+                    f"- **{row['movieNm']}**: 전날 대비 **+{row['rankInten']}계단** (현재 {row['rank']}위)"
+                )
+    else:
+        st.write("오늘은 큰 순위 변동 없이 평화로운 극장가입니다. ☕")
+
+    st.divider()
+
+    st.subheader(f"📈 선택 날짜 기준 7일간 TOP 5 흥행 추이")
+    with st.spinner("과거 7일간 데이터를 불러오는 중..."):
         daily_dfs = []
         for i in range(6, -1, -1):
-            past_date = selected_date - timedelta(days=i)
-            past_dt_str = past_date.strftime("%Y%m%d")
-            p_df, p_err = fetch_box_office(past_dt_str)
-
+            past_date = current_date - timedelta(days=i)
+            p_df, p_err = fetch_box_office(past_date.strftime("%Y%m%d"))
             if p_df is not None:
                 p_df["date"] = past_date.strftime("%m-%d")
                 daily_dfs.append(p_df)
 
     if daily_dfs:
         combined_df = pd.concat(daily_dfs, ignore_index=True)
-
-        # 기준일(선택 날짜) TOP 5 영화 기준으로 피벗 테이블 생성
         top5_movies = df.head(5)["movieNm"].tolist()
         filtered_df = combined_df[combined_df["movieNm"].isin(top5_movies)]
-
         pivot_df = filtered_df.pivot(
             index="date", columns="movieNm", values="audiCnt"
         ).fillna(0)
-
-        # 꺾은선 그래프 연출
         st.line_chart(pivot_df)
 
-        # 역주행 / 급상승 알리미
-        st.subheader("🔥 전날 대비 순위 급상승(역주행) 영화")
-        df["rankInten"] = df["rankInten"].astype(int)
-        up_movies = df[df["rankInten"] > 0].sort_values(
-            "rankInten", ascending=False
-        )
-
-        if not up_movies.empty:
-            for _, row in up_movies.iterrows():
-                st.success(
-                    f"▲ **{row['movieNm']}**: 전날 대비 **{row['rankInten']}계단** 상승! (현재 {row['rank']}위)"
-                )
-        else:
-            st.info("당일 순위가 크게 상승한 역주행 영화가 없습니다.")
-    else:
-        st.warning("7일간의 데이터를 불러오지 못했습니다.")
-
 # ------------------------------------------
-# TAB 3: 스크린 & 상영 효율 분석
+# TAB 3: 상영 좌석 효율성 (가성비 영화)
 # ------------------------------------------
 with tab3:
-    if not err and df is not None:
-        st.subheader("📊 스크린 점유 및 좌석 효율성 분석")
+    st.subheader("💡 알짜배기 영화 찾기 (1회 상영 당 관객수)")
+    st.caption(
+        "스크린 수가 적어도 관객이 꽉꽉 차는 실속파 영화를 확인해 보세요!"
+    )
 
-        # 스크린 1개당 관객수 / 회당 관객수 계산
-        df["audi_per_screen"] = (df["audiCnt"] / df["scrnCnt"]).round(1)
-        df["audi_per_show"] = (df["audiCnt"] / df["showCnt"]).round(1)
+    df["audi_per_show"] = (df["audiCnt"] / df["showCnt"]).round(1)
+    best_eff = df.sort_values("audi_per_show", ascending=False)
 
-        # 스크린 독과점 지수 (상위 3개 영화 스크린 점유율)
-        total_screens = df["scrnCnt"].sum()
-        top3_screens = df.head(3)["scrnCnt"].sum()
-        top3_share = (
-            (top3_screens / total_screens * 100) if total_screens > 0 else 0
-        )
+    top_eff_movie = best_eff.iloc[0]
+    st.warning(
+        f"🔥 **좌석 점유율 1위:** <{top_eff_movie['movieNm']}> (1회 상영당 평균 **{top_eff_movie['audi_per_show']}명** 관람!)"
+    )
 
-        c1, c2 = st.columns(2)
-        c1.metric("TOP 10 총 스크린수", f"{int(total_screens):,} 개")
-        c2.metric(
-            "상위 3개 영화 스크린 점유율",
-            f"{top3_share:.1f}%",
-            help="TOP 10 영화가 확보한 전체 스크린 중 상위 3개 영화의 비중입니다.",
-        )
-
-        st.divider()
-
-        # 회당 관객수(효율) 비교 차트
-        st.write("🎬 **상영 1회당 평균 관객수 (체워진 좌석 효율성 TOP 5)**")
-        eff_top5 = df.sort_values("audi_per_show", ascending=False).head(5)
-
-        st.bar_chart(eff_top5.set_index("movieNm")["audi_per_show"])
-
-        # 상세 데이터 표
-        st.write("📋 **영화별 상세 스크린 효율 표**")
-        analysis_table = df[
-            [
-                "rank",
-                "movieNm",
-                "scrnCnt",
-                "showCnt",
-                "audiCnt",
-                "audi_per_show",
-            ]
-        ].copy()
-        analysis_table.columns = [
-            "순위",
-            "영화명",
-            "스크린수",
-            "상영횟수",
-            "관객수",
-            "상영1회당 관객수",
-        ]
-
-        st.dataframe(
-            analysis_table,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "상영1회당 관객수": st.column_config.NumberColumn(
-                    format="%.1f 명"
-                )
-            },
-        )
+    st.bar_chart(best_eff.head(5).set_index("movieNm")["audi_per_show"])

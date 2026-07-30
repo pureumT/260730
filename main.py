@@ -363,7 +363,7 @@ with tab_dday:
                 status = "🟢 유지 예상"
                 d_day = 999
                 
-        # 최근 존재하는 연도의 고령화율 안전 추출 (IndexError 방지)
+        # 최근 존재하는 연도의 고령화율 안전 추출
         curr_rate_series = grp[grp["연도"] == max_year]["고령화율"]
         if not curr_rate_series.empty:
             curr_rate = curr_rate_series.values[0]
@@ -394,21 +394,33 @@ with tab_dday:
 with tab_rank:
     st.subheader("🏎️ 지난 10년 고령화 순위 변동 & 가속도 Top 10")
     
-    # 2015년 대비 2026년 순위 변동 및 상승폭 계산
-    df_min = sigungu_yearly[sigungu_yearly["연도"] == min_year].set_index("지역명")
-    df_max = sigungu_yearly[sigungu_yearly["연도"] == max_year].set_index("지역명")
+    # sigungu_code(고유 코드) 기준으로 병합하여 중복 라벨 에러 방지
+    df_min = sigungu_yearly[sigungu_yearly["연도"] == min_year][["sigungu_code", "지역명", "고령화율", "전국순위"]]
+    df_max = sigungu_yearly[sigungu_yearly["연도"] == max_year][["sigungu_code", "고령화율", "전국순위"]]
 
-    # 두 데이터 프레임 간 지역명 인덱스를 안전하게 교집합 처리
-    common_regions = df_min.index.intersection(df_max.index)
+    rank_diff = pd.merge(df_min, df_max, on="sigungu_code", suffixes=(f"_{min_year}", f"_{max_year}"))
 
-    rank_diff = pd.DataFrame({
-        f"{min_year}년 고령화율": df_min.loc[common_regions, "고령화율"],
-        f"{max_year}년 고령화율": df_max.loc[common_regions, "고령화율"],
-        f"{min_year}년 순위": df_min.loc[common_regions, "전국순위"],
-        f"{max_year}년 순위": df_max.loc[common_regions, "전국순위"],
-        "순위 상승폭 (계단)": df_min.loc[common_regions, "전국순위"] - df_max.loc[common_regions, "전국순위"],
-        "고령화율 증가폭 (%p)": (df_max.loc[common_regions, "고령화율"] - df_min.loc[common_regions, "고령화율"]).round(1)
-    }).reset_index()
+    rank_diff["순위 상승폭 (계단)"] = rank_diff[f"전국순위_{min_year}"] - rank_diff[f"전국순위_{max_year}"]
+    rank_diff["고령화율 증가폭 (%p)"] = (rank_diff[f"고령화율_{max_year}"] - rank_diff[f"고령화율_{min_year}"]).round(1)
+
+    rank_diff = rank_diff[[
+        "지역명", 
+        f"고령화율_{min_year}", 
+        f"고령화율_{max_year}", 
+        f"전국순위_{min_year}", 
+        f"전국순위_{max_year}", 
+        "순위 상승폭 (계단)", 
+        "고령화율 증가폭 (%p)"
+    ]]
+    rank_diff.columns = [
+        "지역명", 
+        f"{min_year}년 고령화율", 
+        f"{max_year}년 고령화율", 
+        f"{min_year}년 순위", 
+        f"{max_year}년 순위", 
+        "순위 상승폭 (계단)", 
+        "고령화율 증가폭 (%p)"
+    ]
 
     col_r1, col_r2 = st.columns(2)
     with col_r1:

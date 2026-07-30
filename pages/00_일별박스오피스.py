@@ -6,10 +6,10 @@ import requests
 import streamlit as st
 
 # ==========================================
-# 1. 페이지 설정
+# 1. 페이지 기본 설정
 # ==========================================
 st.set_page_config(
-    page_title="🍿 팝콘 타임머신 & 박스오피스",
+    page_title="🍿 팝콘 타임머신 & 영화관 주식창",
     page_icon="🎬",
     layout="wide",
 )
@@ -50,10 +50,19 @@ def fetch_box_office(target_dt_str):
             return None, "해당 날짜의 데이터가 없습니다."
 
         df = pd.DataFrame(box_list)
+
+        # 문자열로 온 수치형 데이터들을 숫자로 변환
         num_cols = [
             "rank",
             "rankInten",
+            "salesAmt",
+            "salesShare",
+            "salesInten",
+            "salesChange",
+            "salesAcc",
             "audiCnt",
+            "audiInten",
+            "audiChange",
             "audiAcc",
             "scrnCnt",
             "showCnt",
@@ -67,28 +76,25 @@ def fetch_box_office(target_dt_str):
         return None, f"네트워크 오류: {str(e)}"
 
 
-# 기준 날짜 계산 (KST 어제)
+# KST 기준 어제 날짜
 today_kst = datetime.now(ZoneInfo("Asia/Seoul"))
 default_yesterday = (today_kst - timedelta(days=1)).date()
 
-# Session State를 이용한 날짜 상태 관리 (랜덤 타임머신 버튼용)
+# Session State 날짜 관리
 if "selected_date" not in st.session_state:
     st.session_state.selected_date = default_yesterday
 
-
 # ==========================================
-# 3. 🎯 최상단: 타이틀 & 날짜 선택 컨트롤러 (탭 밖으로 배치!)
+# 3. 최상단 날짜 컨트롤러
 # ==========================================
-st.title("🍿 팝콘 타임머신 & 박스오피스 Hub")
-st.caption("과거로 떠나는 영화 여행부터 꿀잼 데이터 분석까지!")
+st.title("🍿 팝콘 타임머신 & 박스오피스 인사이트")
+st.caption("어제 박스오피스부터 매출 떡상률, 티켓 단가 분석까지 한눈에!")
 
-# 상단 제어바 (날짜 선택 + 타임머신 버튼)
 ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 1, 1])
 
 with ctrl_col1:
-    # date_input의 상태를 session_state와 연동
     chosen_date = st.date_input(
-        "📅 **조회할 날짜를 선택하세요**",
+        "📅 **조회할 날짜 선택**",
         value=st.session_state.selected_date,
         max_value=default_yesterday,
         key="date_picker",
@@ -96,11 +102,9 @@ with ctrl_col1:
     st.session_state.selected_date = chosen_date
 
 with ctrl_col2:
-    st.write(" ")  # 정렬용 여백
     st.write(" ")
-    # 🎲 랜덤 타임머신 버튼
+    st.write(" ")
     if st.button("🎲 **랜덤 타임머신!**", use_container_width=True):
-        # 2004년 1월 1일 ~ 어제 사이 랜덤 날짜 뽑기
         start_date = datetime(2004, 1, 1).date()
         random_days = random.randint(0, (default_yesterday - start_date).days)
         st.session_state.selected_date = start_date + timedelta(
@@ -119,10 +123,9 @@ current_date = st.session_state.selected_date
 target_dt = current_date.strftime("%Y%m%d")
 
 st.markdown(
-    f"### 📍 현재 탐색 중인 날짜: **{current_date.strftime('%Y년 %m월 %d일')}**"
+    f"### 📍 현재 탐색 일자: **{current_date.strftime('%Y년 %m월 %d일')}**"
 )
 st.divider()
-
 
 # ==========================================
 # 4. 데이터 로드 & 에러 체크
@@ -131,49 +134,79 @@ df, err = fetch_box_office(target_dt)
 
 if err:
     st.error(f"🚨 **{err}**")
-    st.warning(
-        "💡 Secrets의 KOBIS_KEY를 확인하거나 상단에서 다른 날짜를 선택해 보세요."
-    )
+    st.warning("💡 다른 날짜를 선택하거나 KOBIS_KEY 상태를 확인하세요.")
     st.stop()
 
+# 파생 데이터 계산 (티켓 평균 단가 = 당일 매출액 / 관객수)
+df["avg_ticket_price"] = (
+    df["salesAmt"] / df["audiCnt"].replace(0, 1)
+).round(0)
 
 # ==========================================
-# 5. 메인 콘텐츠 탭 구성
+# 5. 4가지 개성만점 탭 구성
 # ==========================================
-tab1, tab2, tab3 = st.tabs(
-    ["🥇 1위 하이라이트 & 추억", "📈 7일 흥행 추세 & 이슈", "📊 영화관 좌석 효율"]
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "🥇 1위 영화 & 신작 감지",
+        "📈 극장가 주식창 (매출 떡상/떡락)",
+        "💰 티켓 단가 & 스크린 효율",
+        "📊 매출 점유율 싹쓸이 현황",
+    ]
 )
 
 # ------------------------------------------
-# TAB 1: 1위 영화 하이라이트 & 생일 타임머신
+# TAB 1: 1위 영화 & NEW/OLD 배지
 # ------------------------------------------
 with tab1:
     top = df.sort_values("rank").iloc[0]
 
-    st.subheader(
-        f"🏆 이 날의 챔피언: <{top['movieNm']}>", anchor=False
-    )
+    # 신규 진입 여부 배지
+    is_new = top["rankOldAndNew"] == "NEW"
+    badge = "✨ [NEW] 갓 개봉한 신작!" if is_new else "🏛️ [OLD] 자리를 지키는 흥행작"
+
+    st.subheader(f"🏆 이 날의 1위: <{top['movieNm']}> {badge}")
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("🎬 영화명", top["movieNm"])
-    c2.metric("🍿 당일 관객수", f"{int(top['audiCnt']):,} 명")
-    c3.metric("🎟️ 누적 관객수", f"{int(top['audiAcc']):,} 명")
-    c4.metric("🖥️ 스크린수", f"{int(top['scrnCnt']):,} 개")
-
-    # 재미 요소: SNS 자랑용 텍스트 복사 카드
-    st.info(
-        f"""
-    📣 **[SNS 공유용 찰진 요약]**  
-    "{current_date.strftime('%Y년 %m월 %d일')} 극장가는 **<{top['movieNm']}>**이(가) 점령했다!  
-    하루 동안 무려 **{int(top['audiCnt']):,}명**이 이 영화를 보며 팝콘을 튀겼습니다 🍿"
-    """
+    c2.metric("🍿 어제 관객수", f"{int(top['audiCnt']):,} 명")
+    c3.metric(
+        "💵 어제 매출액",
+        f"{int(top['salesAmt'] / 10000):,} 만원",
+        delta=f"{top['salesChange']:.1f}% (전일 대비)",
     )
+    c4.metric("🎟️ 누적 관객수", f"{int(top['audiAcc']):,} 명")
 
-    st.subheader("📋 순위 표")
-    table = df[
-        ["rank", "movieNm", "openDt", "audiCnt", "audiAcc", "scrnCnt"]
-    ].copy()
-    table.columns = ["순위", "영화명", "개봉일", "관객수", "누적관객", "스크린수"]
+    st.divider()
+
+    st.subheader("📋 전체 박스오피스 TOP 10")
+
+    # 가공 표 생성
+    display_df = df.copy()
+    display_df["태그"] = display_df["rankOldAndNew"].apply(
+        lambda x: "✨ NEW" if x == "NEW" else "OLD"
+    )
+    display_df["매출액(만원)"] = (display_df["salesAmt"] / 10000).astype(int)
+
+    table = display_df[
+        [
+            "rank",
+            "태그",
+            "movieNm",
+            "openDt",
+            "audiCnt",
+            "매출액(만원)",
+            "salesShare",
+        ]
+    ]
+    table.columns = [
+        "순위",
+        "구분",
+        "영화명",
+        "개봉일",
+        "관객수",
+        "당일 매출(만원)",
+        "매출 점유율(%)",
+    ]
 
     st.dataframe(
         table,
@@ -182,70 +215,105 @@ with tab1:
         column_config={
             "순위": st.column_config.NumberColumn(format="%d위"),
             "관객수": st.column_config.NumberColumn(format="%d 명"),
-            "누적관객": st.column_config.NumberColumn(format="%d 명"),
-            "스크린수": st.column_config.NumberColumn(format="%d 개"),
+            "당일 매출(만원)": st.column_config.NumberColumn(format="%d 만원"),
+            "매출 점유율(%)": st.column_config.NumberColumn(format="%.1f %%"),
         },
     )
 
 # ------------------------------------------
-# TAB 2: 흥행 추세 & 핫이슈 기상도
+# TAB 2: 극장가 주식창 (매출 떡상/떡락 비율)
 # ------------------------------------------
 with tab2:
-    st.subheader("🔥 극장가 핫이슈 기상도")
-
-    # 역주행 영화 감지
-    df["rankInten"] = df["rankInten"].astype(int)
-    up_movies = df[df["rankInten"] > 0].sort_values(
-        "rankInten", ascending=False
+    st.subheader("📈 어제 매출액 변동률 TOP 5 (전일 대비)")
+    st.caption(
+        "주식 창처럼 전날 대비 매출액이 급격히 증가(떡상)하거나 감소(떡락)한 영화입니다."
     )
 
-    if not up_movies.empty:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.success("🚀 **역주행 급상승 영화**")
-            for _, row in up_movies.iterrows():
-                st.write(
-                    f"- **{row['movieNm']}**: 전날 대비 **+{row['rankInten']}계단** (현재 {row['rank']}위)"
-                )
-    else:
-        st.write("오늘은 큰 순위 변동 없이 평화로운 극장가입니다. ☕")
+    # salesChange 기준 정렬
+    surge_df = df.sort_values("salesChange", ascending=False)
+
+    top_surge = surge_df.iloc[0]
+    top_drop = surge_df.iloc[-1]
+
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        st.success(
+            f"🚀 **오늘의 떡상왕:** <{top_surge['movieNm']}>\n\n"
+            f"- 전일 대비 매출 증가율: **+{top_surge['salesChange']:.1f}%**\n"
+            f"- 어제 번 돈: **{int(top_surge['salesAmt'] / 10000):,} 만원**"
+        )
+
+    with col_b:
+        st.error(
+            f"📉 **오늘의 떡락왕:** <{top_drop['movieNm']}>\n\n"
+            f"- 전일 대비 매출 변동률: **{top_drop['salesChange']:.1f}%**\n"
+            f"- 어제 번 돈: **{int(top_drop['salesAmt'] / 10000):,} 만원**"
+        )
 
     st.divider()
 
-    st.subheader(f"📈 선택 날짜 기준 7일간 TOP 5 흥행 추이")
-    with st.spinner("과거 7일간 데이터를 불러오는 중..."):
-        daily_dfs = []
-        for i in range(6, -1, -1):
-            past_date = current_date - timedelta(days=i)
-            p_df, p_err = fetch_box_office(past_date.strftime("%Y%m%d"))
-            if p_df is not None:
-                p_df["date"] = past_date.strftime("%m-%d")
-                daily_dfs.append(p_df)
-
-    if daily_dfs:
-        combined_df = pd.concat(daily_dfs, ignore_index=True)
-        top5_movies = df.head(5)["movieNm"].tolist()
-        filtered_df = combined_df[combined_df["movieNm"].isin(top5_movies)]
-        pivot_df = filtered_df.pivot(
-            index="date", columns="movieNm", values="audiCnt"
-        ).fillna(0)
-        st.line_chart(pivot_df)
+    st.write("📊 **TOP 10 영화의 매출 변동률(%) 비교**")
+    st.bar_chart(df.set_index("movieNm")["salesChange"])
 
 # ------------------------------------------
-# TAB 3: 상영 좌석 효율성 (가성비 영화)
+# TAB 3: 티켓 단가 & 스크린 효율
 # ------------------------------------------
 with tab3:
-    st.subheader("💡 알짜배기 영화 찾기 (1회 상영 당 관객수)")
+    st.subheader("💡 이 영화 관객은 티켓값을 얼마씩 냈을까?")
     st.caption(
-        "스크린 수가 적어도 관객이 꽉꽉 차는 실속파 영화를 확인해 보세요!"
+        "당일 매출액을 관객수로 나누어 '평균 티켓 단가'를 추정합니다. (IMAX, 4DX, 조조 할인 등 관람 유형 반영)"
     )
 
+    pricy_df = df.sort_values("avg_ticket_price", ascending=False)
+
+    top_pricy = pricy_df.iloc[0]
+    st.info(
+        f"💎 **티켓 단가 1위:** <{top_pricy['movieNm']}> → 평균 **{int(top_pricy['avg_ticket_price']):,}원** / 1인당\n\n"
+        f"(IMAX나 특별관 비중이 높거나 주말/성인 관람객 비율이 높을수록 단가가 올라갑니다!)"
+    )
+
+    st.bar_chart(pricy_df.set_index("movieNm")["avg_ticket_price"])
+
+    # 상영 1회당 관객수 계산
     df["audi_per_show"] = (df["audiCnt"] / df["showCnt"]).round(1)
-    best_eff = df.sort_values("audi_per_show", ascending=False)
-
-    top_eff_movie = best_eff.iloc[0]
-    st.warning(
-        f"🔥 **좌석 점유율 1위:** <{top_eff_movie['movieNm']}> (1회 상영당 평균 **{top_eff_movie['audi_per_show']}명** 관람!)"
+    st.write("🎬 **좌석 효율성 (상영 1회당 평균 관객수)**")
+    st.dataframe(
+        df[["rank", "movieNm", "scrnCnt", "showCnt", "audi_per_show"]].rename(
+            columns={
+                "rank": "순위",
+                "movieNm": "영화명",
+                "scrnCnt": "스크린수",
+                "showCnt": "상영횟수",
+                "audi_per_show": "1회당 관객수(명)",
+            }
+        ),
+        use_container_width=True,
+        hide_index=True,
     )
 
-    st.bar_chart(best_eff.head(5).set_index("movieNm")["audi_per_show"])
+# ------------------------------------------
+# TAB 4: 매출 점유율 싹쓸이 현황
+# ------------------------------------------
+with tab4:
+    st.subheader("🍕 영화관 돈 싹쓸이 현황 (salesShare)")
+    st.caption("어제 영화관 전체 매출 중 각 영화가 차지한 비율(%)입니다.")
+
+    top3_share = df.head(3)["salesShare"].sum()
+
+    col_x, col_y = st.columns([1, 2])
+
+    with col_x:
+        st.metric(
+            "상위 3개 영화의 매출 점유율 합계",
+            f"{top3_share:.1f}%",
+            help="1~3위 영화가 전체 영화 시장 돈을 얼마나 독식했는지 보여줍니다.",
+        )
+        if top3_share >= 70:
+            st.warning("⚠️ **경고:** 독과점이 심각한 상태입니다!")
+        else:
+            st.success("✅ 여러 영화가 고루 선전하고 있습니다.")
+
+    with col_y:
+        # 간단한 막대 그래프로 매출 점유율 시각화
+        st.bar_chart(df.set_index("movieNm")["salesShare"])

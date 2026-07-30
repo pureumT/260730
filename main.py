@@ -60,8 +60,10 @@ def load_all_data():
     sigungu_yearly["고령화율"] = (sigungu_yearly["고령인구"] / sigungu_yearly["전체인구"]) * 100
     sigungu_yearly["고령화율"] = sigungu_yearly["고령화율"].round(1)
     
-    # 검색용 시도+시군구 전체 이름 열 생성 (예: "서울특별시 종로구")
-    sigungu_yearly["지역명"] = sigungu_yearly["시도"] + " " + sigungu_yearly["시군구"]
+    # 결측치 처리 후 검색용 시도+시군구 전체 이름 열 생성 (예: "서울특별시 종로구")
+    sigungu_yearly["시도"] = sigungu_yearly["시도"].fillna("")
+    sigungu_yearly["시군구"] = sigungu_yearly["시군구"].fillna("")
+    sigungu_yearly["지역명"] = (sigungu_yearly["시도"] + " " + sigungu_yearly["시군구"]).str.strip()
     
     # 5단계 범주형 구간 만들기 (19%, 23%, 28%, 38% 기준)
     bins = [0, 19, 23, 28, 38, 100]
@@ -99,8 +101,10 @@ selected_year = st.sidebar.slider(
     step=1
 )
 
-# 지역 선택 드롭다운 (검색 가능)
-all_regions = ["전국 (전체)"] + sorted(list(sigungu_yearly["지역명"].unique()))
+# 지역 선택 드롭다운 (결측치 및 공백 제거 후 정렬)
+valid_regions = [r for r in sigungu_yearly["지역명"].dropna().unique() if r]
+all_regions = ["전국 (전체)"] + sorted(valid_regions)
+
 selected_region = st.sidebar.selectbox(
     "🔍 상세 분석할 지역 선택",
     options=all_regions,
@@ -113,16 +117,13 @@ df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
 # ==========================================
 # 4. 상단 KPI 요약 카드 (4개)
 # ==========================================
-# 전국 전체 통계 계산
 nat_total_pop = df_year["전체인구"].sum()
 nat_elderly_pop = df_year["고령인구"].sum()
 nat_aging_rate = round((nat_elderly_pop / nat_total_pop) * 100, 1)
 
-# 초고령사회 (고령화율 20% 이상) 시군구 수 및 비율
 super_aged_count = len(df_year[df_year["고령화율"] >= 20.0])
 super_aged_ratio = round((super_aged_count / len(df_year)) * 100, 1)
 
-# 고령화율 최고 / 최저 지역
 top_region_row = df_year.sort_values(by="고령화율", ascending=False).iloc[0]
 bottom_region_row = df_year.sort_values(by="고령화율", ascending=True).iloc[0]
 
@@ -169,7 +170,6 @@ col_map, col_chart = st.columns([1.2, 0.8])
 with col_map:
     st.subheader(f"🗺️ 전국 시군구 고령화 지도 ({selected_year}년)")
     
-    # 5단계 범주형 색상 맵
     color_map = {
         "19% 미만": "#edf8fb",
         "19% 이상 ~ 23% 미만": "#b2e2e2",
@@ -215,7 +215,6 @@ with col_map:
 with col_chart:
     st.subheader("📈 연도별 고령화율 변화 추이")
     
-    # 전국 연도별 평균 데이터 산출
     nat_trend = sigungu_yearly.groupby("연도").apply(
         lambda x: (x["고령인구"].sum() / x["전체인구"].sum()) * 100
     ).reset_index(name="전국평균")
@@ -223,7 +222,6 @@ with col_chart:
 
     fig_line = go.Figure()
 
-    # 1) 전국 평균 선 추가
     fig_line.add_trace(go.Scatter(
         x=nat_trend["연도"],
         y=nat_trend["전국평균"],
@@ -232,16 +230,16 @@ with col_chart:
         line=dict(color="#94a3b8", width=2, dash="dash")
     ))
 
-    # 2) 특정 지역 선택 시 해당 지역 선 추가
     if selected_region != "전국 (전체)":
         reg_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
         
-        # 선택한 지역의 현 연도 순위 계산
         df_year_sorted = df_year.sort_values(by="고령화율", ascending=False).reset_index(drop=True)
-        rank = df_year_sorted[df_year_sorted["지역명"] == selected_region].index[0] + 1
-        curr_rate = reg_df[reg_df["연도"] == selected_year]["고령화율"].values[0]
-
-        st.info(f"📍 **{selected_region}** ({selected_year}년 기준)\n- **고령화율:** `{curr_rate}%`\n- **전국 순위:** `255개 지자체 중 {rank}위`")
+        rank_matches = df_year_sorted[df_year_sorted["지역명"] == selected_region].index
+        
+        if len(rank_matches) > 0 and len(reg_df[reg_df["연도"] == selected_year]) > 0:
+            rank = rank_matches[0] + 1
+            curr_rate = reg_df[reg_df["연도"] == selected_year]["고령화율"].values[0]
+            st.info(f"📍 **{selected_region}** ({selected_year}년 기준)\n- **고령화율:** `{curr_rate}%`\n- **전국 순위:** `255개 지자체 중 {rank}위`")
 
         fig_line.add_trace(go.Scatter(
             x=reg_df["연도"],
@@ -283,7 +281,6 @@ with tab2:
     st.dataframe(bottom10_view, use_container_width=True)
 
 with tab3:
-    # 최초 연도(2015년) 대비 선택 연도까지의 고령화율 증가폭(%p) 계산
     start_df = sigungu_yearly[sigungu_yearly["연도"] == min_year].set_index("sigungu_code")["고령화율"]
     curr_df = df_year.set_index("sigungu_code")
     

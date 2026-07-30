@@ -110,7 +110,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. 데이터 처리 (행정구역 명칭 표준화 반영)
+# 2. 데이터 처리 (시도 중복 명칭 전처리 및 표준화)
 # ==========================================
 @st.cache_data
 def load_population_data():
@@ -119,11 +119,16 @@ def load_population_data():
     
     df["sigungu_code"] = df["코드"].str[:5]
     
-    # 시도 명칭 변경(강원특별자치도 등)에 따른 매칭 불일치 완화를 위해 표준화 처리
     df["시도"] = df["시도"].fillna("").astype(str)
     df["시군구"] = df["시군구"].fillna("").astype(str)
     
-    # 연도별로 명칭이 다를 수 있어 코드를 대표 명칭으로 통일
+    # 중복되는 시도 변경 명칭을 기본 표준 명칭으로 정제
+    sido_map = {
+        "강원특별자치도": "강원도",
+        "전북특별자치도": "전라북도"
+    }
+    df["시도"] = df["시도"].replace(sido_map)
+    
     total_cols = [c for c in df.columns if c.startswith("계_")]
     elderly_cols = []
     for col in total_cols:
@@ -136,7 +141,7 @@ def load_population_data():
     df["전체인구"] = df[total_cols].sum(axis=1)
     df["고령인구"] = df[elderly_cols].sum(axis=1)
     
-    # 코드를 기준으로 시도, 시군구의 가장 최근 명칭 추출해서 통일
+    # 시군구 코드를 대표 명칭으로 통일
     latest_names = df.sort_values("연도").groupby("sigungu_code").last()[["시도", "시군구"]].reset_index()
     latest_names.columns = ["sigungu_code", "표준시도", "표준시군구"]
     

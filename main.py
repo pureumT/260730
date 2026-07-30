@@ -363,7 +363,13 @@ with tab_dday:
                 status = "🟢 유지 예상"
                 d_day = 999
                 
-        curr_rate = grp[grp["연도"] == max_year]["고령화율"].values[0]
+        # 최근 존재하는 연도의 고령화율 안전 추출 (IndexError 방지)
+        curr_rate_series = grp[grp["연도"] == max_year]["고령화율"]
+        if not curr_rate_series.empty:
+            curr_rate = curr_rate_series.values[0]
+        else:
+            curr_rate = grp.iloc[-1]["고령화율"]
+
         dday_list.append({
             "지역명": reg,
             f"{max_year}년 고령화율": f"{curr_rate}%",
@@ -392,13 +398,16 @@ with tab_rank:
     df_min = sigungu_yearly[sigungu_yearly["연도"] == min_year].set_index("지역명")
     df_max = sigungu_yearly[sigungu_yearly["연도"] == max_year].set_index("지역명")
 
+    # 두 데이터 프레임 간 지역명 인덱스를 안전하게 교집합 처리
+    common_regions = df_min.index.intersection(df_max.index)
+
     rank_diff = pd.DataFrame({
-        f"{min_year}년 고령화율": df_min["고령화율"],
-        f"{max_year}년 고령화율": df_max["고령화율"],
-        f"{min_year}년 순위": df_min["전국순위"],
-        f"{max_year}년 순위": df_max["전국순위"],
-        "순위 상승폭 (계단)": df_min["전국순위"] - df_max["전국순위"],
-        "고령화율 증가폭 (%p)": (df_max["고령화율"] - df_min["고령화율"]).round(1)
+        f"{min_year}년 고령화율": df_min.loc[common_regions, "고령화율"],
+        f"{max_year}년 고령화율": df_max.loc[common_regions, "고령화율"],
+        f"{min_year}년 순위": df_min.loc[common_regions, "전국순위"],
+        f"{max_year}년 순위": df_max.loc[common_regions, "전국순위"],
+        "순위 상승폭 (계단)": df_min.loc[common_regions, "전국순위"] - df_max.loc[common_regions, "전국순위"],
+        "고령화율 증가폭 (%p)": (df_max.loc[common_regions, "고령화율"] - df_min.loc[common_regions, "고령화율"]).round(1)
     }).reset_index()
 
     col_r1, col_r2 = st.columns(2)

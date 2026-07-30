@@ -104,7 +104,7 @@ st.markdown("""
 st.markdown("""
 <div class="dashboard-header">
     <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
-    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 지자체 1:1 수치 비교 및 위험 등급 진단 리포트</div>
+    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 복지 인프라 공급 시급성 진단</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -204,11 +204,10 @@ selected_region = st.sidebar.selectbox(
 
 df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
 
-# 데이터 다운로드 버튼 파트 (사이드바 하단)
+# 데이터 다운로드 버튼 파트
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📥 데이터 다운로드")
 
-# 1) 전체 연도 필터링 데이터 다운로드
 csv_year_data = df_year[["연도", "시도", "시군구", "지역명", "전체인구", "고령인구", "고령화율", "전국순위"]].to_csv(index=False).encode('utf-8-sig')
 st.sidebar.download_button(
     label=f"📊 {selected_year}년 전국 시군구 CSV 받기",
@@ -217,7 +216,6 @@ st.sidebar.download_button(
     mime="text/csv"
 )
 
-# 2) 선택된 특정 지자체 10년 추이 데이터 다운로드
 if selected_region != "전국 (전체)":
     reg_history_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region][["연도", "시도", "시군구", "전체인구", "고령인구", "고령화율", "전국순위"]].sort_values("연도")
     csv_reg_data = reg_history_df.to_csv(index=False).encode('utf-8-sig')
@@ -284,15 +282,16 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 # 5. 메인 탭 구성
 # ==========================================
-tab_map, tab_compare, tab_scatter, tab_tree = st.tabs([
+tab_map, tab_infra, tab_compare, tab_scatter, tab_tree = st.tabs([
     "🗺️ 전국 지도 & 미래 예측", 
+    "🏥 복지 인프라 공급 시급성 분석 (신규)",
     "⚔️ 지자체 1:1 비교",
     "🎯 고령인구 규모 vs 비율 분석",
     "🔲 시·도 계층별 트리맵"
 ])
 
 # ------------------------------------------
-# TAB 1: 전국 지도 및 2035 예측 & 자동 진단 리포트
+# TAB 1: 전국 지도 및 2035 예측 & 진단 리포트
 # ------------------------------------------
 with tab_map:
     col_m, col_p = st.columns([1.1, 0.9])
@@ -360,36 +359,23 @@ with tab_map:
             pred_2035 = future_y[-1]
             growth_10y = round(curr_rate - y[0], 1) if len(y) > 0 else 0.0
 
-            # 고령화 위험 등급 자동 진단 로직
             if curr_rate >= 30.0:
                 risk_level = "🚨 초고위험 단계"
-                risk_color = "error"
-                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 이미 극심한 초고령사회에 진입해 있습니다. 복지 예산 부담 증대 및 유소년 인구 유출 대책이 시급합니다."
+                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 이미 극심한 초고령사회에 진입해 있습니다."
+                st.error(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
             elif curr_rate >= 20.0:
                 risk_level = "⚠️ 고위험 단계 (초고령사회)"
-                risk_color = "warning"
-                risk_msg = f"**{selected_region}**은(는) UN 기준 초고령사회(20% 이상)에 해당하며, 지난 10년간 고령화율이 **+{growth_10y}%p** 증가하는 빠른 고령화 속도를 보이고 있습니다."
+                risk_msg = f"**{selected_region}**은(는) UN 기준 초고령사회(20% 이상)에 해당하며, 지난 10년간 고령화율이 **+{growth_10y}%p** 증가했습니다."
+                st.warning(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
             elif curr_rate >= 14.0:
                 risk_level = "🟡 주의 단계 (고령사회)"
-                risk_color = "info"
-                risk_msg = f"**{selected_region}**은(는) 고령사회(14% 이상) 수준에 도달해 있으며, 2035년경에는 **{pred_2035}%**까지 상승하여 초고령사회로 진입할 것으로 예상됩니다."
+                risk_msg = f"**{selected_region}**은(는) 고령사회(14% 이상) 수준에 도달해 있으며, 2035년경에는 **{pred_2035}%**까지 상승할 예상입니다."
+                st.info(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
             else:
-                risk_level = "🟢 양호 단계 (고령화사회 이하)"
-                risk_color = "success"
-                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 전국 평균 대비 비교적 젊은 인구 구조를 유지하고 있습니다."
+                risk_level = "🟢 양호 단계"
+                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 비교적 젊은 인구 구조를 유지하고 있습니다."
+                st.success(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
 
-            # 진단 리포트 출력
-            st.markdown(f"**[진단 결과: {risk_level}]**")
-            if risk_color == "error":
-                st.error(risk_msg)
-            elif risk_color == "warning":
-                st.warning(risk_msg)
-            elif risk_color == "info":
-                st.info(risk_msg)
-            else:
-                st.success(risk_msg)
-
-            # 예측 그래프
             fig_pred = go.Figure()
             fig_pred.add_trace(go.Scatter(
                 x=X, y=y, mode="lines+markers", name="관측치",
@@ -413,7 +399,65 @@ with tab_map:
             st.info("👈 사이드바 필터에서 특정 **시군구**를 선택하시면 지자체 자동 진단 리포트와 2035년 미래 예측 그래프를 확인할 수 있습니다.")
 
 # ------------------------------------------
-# TAB 2: 지자체 1:1 비교
+# TAB 2: 신규 추가 - 복지 인프라 시급성 분석
+# ------------------------------------------
+with tab_infra:
+    st.markdown(f"##### 🏥 {selected_year}년 고령인구 규모 & 비율 기반 복지 인프라 시급성 진단")
+    st.caption("고령화 비율과 절대 인구 수 규모를 종합하여 노인복지관, 요양시설, 실버케어 서비스 확충이 가장 시급한 지자체를 구분합니다.")
+
+    avg_elderly_pop = df_year["고령인구"].median()
+    avg_aging_rate = df_year["고령화율"].mean()
+
+    # 인프라 필요도 분류 계산
+    def classify_infra(row):
+        if row["고령화율"] >= avg_aging_rate and row["고령인구"] >= avg_elderly_pop:
+            return "🚨 1순위: 시설 확충 최우선 (고비율+대규모)"
+        elif row["고령인구"] >= avg_elderly_pop:
+            return "⚠️ 2순위: 거점 복지시설 필요 (대규모 인구)"
+        elif row["고령화율"] >= avg_aging_rate:
+            return "🟡 3순위: 방문/이동형 케어 필요 (고비율 소규모)"
+        else:
+            return "🟢 4순위: 일반 관리 지역"
+
+    df_year["인프라시급성"] = df_year.apply(classify_infra, axis=1)
+
+    infra_counts = df_year["인프라시급성"].value_counts()
+
+    col_i1, col_i2 = st.columns([1, 1])
+
+    with col_i1:
+        st.markdown("##### 📌 지자체 인프라 시급성 분류 현황")
+        fig_infra_pie = px.pie(
+            names=infra_counts.index,
+            values=infra_counts.values,
+            color=infra_counts.index,
+            color_discrete_map={
+                "🚨 1순위: 시설 확충 최우선 (고비율+대규모)": "#ef4444",
+                "⚠️ 2순위: 거점 복지시설 필요 (대규모 인구)": "#f97316",
+                "🟡 3순위: 방문/이동형 케어 필요 (고비율 소규모)": "#eab308",
+                "🟢 4순위: 일반 관리 지역": "#22c55e"
+            },
+            hole=0.4
+        )
+        fig_infra_pie.update_layout(height=380, margin={"r":10, "t":10, "l":10, "b":10})
+        st.plotly_chart(fig_infra_pie, use_container_width=True)
+
+    with col_i2:
+        st.markdown("##### 🚨 1순위 (복지 인프라 확충 최우선 지자체 Top 10)")
+        p1_df = df_year[df_year["인프라시급성"].str.contains("1순위")].sort_values(by="고령인구", ascending=False).head(10)
+        p1_display = p1_df[["지역명", "고령인구", "고령화율"]].reset_index(drop=True)
+        p1_display.columns = ["지역명", "65세 이상 인구 (명)", "고령화율 (%)"]
+        st.dataframe(p1_display, use_container_width=True)
+
+    # 선택 지자체 가이드
+    if selected_region != "전국 (전체)":
+        target_infra = df_year[df_year["지역명"] == selected_region]
+        if len(target_infra) > 0:
+            infra_type = target_infra.iloc[0]["인프라시급성"]
+            st.info(f"📍 **{selected_region} 진단:** 해당 지역은 **[{infra_type}]** 그룹으로 산출되었습니다.")
+
+# ------------------------------------------
+# TAB 3: 지자체 1:1 비교
 # ------------------------------------------
 with tab_compare:
     st.markdown("##### ⚔️ 두 지자체 간 1:1 수치 및 추이 직접 비교")
@@ -510,7 +554,7 @@ with tab_compare:
             st.plotly_chart(fig_comp_bar, use_container_width=True)
 
 # ------------------------------------------
-# TAB 3: 버블 산점도 분석
+# TAB 4: 버블 산점도 분석
 # ------------------------------------------
 with tab_scatter:
     st.markdown("##### 🎯 65세 이상 절대 인구수 vs 고령화 비율 (4분면 매트릭스)")
@@ -535,7 +579,7 @@ with tab_scatter:
     st.plotly_chart(fig_bubble, use_container_width=True)
 
 # ------------------------------------------
-# TAB 4: 시도 트리맵
+# TAB 5: 시도 트리맵
 # ------------------------------------------
 with tab_tree:
     st.markdown("##### 🔲 시·도별 시군구 계층 구조 트리맵")

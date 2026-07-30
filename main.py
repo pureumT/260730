@@ -26,7 +26,7 @@ st.markdown("""
     }
     
     .stApp {
-        background-color: #f1f5f9;
+        background-color: #f8fafc;
     }
     
     /* 대시보드 헤더 */
@@ -58,7 +58,7 @@ st.markdown("""
         border: 1px solid #e2e8f0;
         border-radius: 16px;
         padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
     }
     .kpi-label {
         font-size: 0.8rem;
@@ -79,10 +79,20 @@ st.markdown("""
         color: #3b82f6;
     }
 
+    /* 특정 지역 딥다이브 카드 */
+    .target-section {
+        background: #ffffff;
+        border: 2px solid #3b82f6;
+        border-radius: 20px;
+        padding: 28px;
+        margin-top: 32px;
+        box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.1);
+    }
+
     /* 탭 스타일 개편 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
-        background-color: #e2e8f0;
+        background-color: #cbd5e1;
         padding: 6px;
         border-radius: 14px;
     }
@@ -91,12 +101,12 @@ st.markdown("""
         border-radius: 10px;
         font-weight: 700;
         font-size: 0.95rem;
-        color: #64748b;
+        color: #475569;
     }
     .stTabs [aria-selected="true"] {
         background-color: #ffffff !important;
         color: #0f172a !important;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -105,7 +115,7 @@ st.markdown("""
 st.markdown("""
 <div class="dashboard-header">
     <div class="header-title">📊 대한민국 고령화 인사이더 대시보드</div>
-    <div class="header-sub">전국 시군구별 인구 구조 분석 · 2035 미래 예측 · 복지 인프라 시급성 및 종합 브리핑 보고서 생성</div>
+    <div class="header-sub">전국 시군구 인구 구조 분석 · 타겟 지역 딥다이브 진단 · 종합 브리핑 보고서</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -182,9 +192,9 @@ geojson_data, geo_centers = load_geojson()
 min_year = int(sigungu_yearly["연도"].min())
 
 # ==========================================
-# 3. 사이드바 검색 컨트롤 및 다운로드 파트
+# 3. 사이드바 검색 컨트롤
 # ==========================================
-st.sidebar.markdown("### ⚙️ 분석 제어판")
+st.sidebar.markdown("### ⚙️ 대시보드 제어판")
 
 selected_year = st.sidebar.slider(
     "📅 데이터 분석 연도",
@@ -198,14 +208,14 @@ valid_regions = [r for r in sigungu_yearly["지역명"].dropna().unique() if r]
 all_regions = ["전국 (전체)"] + sorted(valid_regions)
 
 selected_region = st.sidebar.selectbox(
-    "🔍 타겟 시군구 검색",
+    "🔍 타겟 시군구 검색 (개별 진단)",
     options=all_regions,
     index=0
 )
 
 df_year = sigungu_yearly[sigungu_yearly["연도"] == selected_year].copy()
 
-# 데이터 다운로드 버튼 파트
+# 데이터 다운로드 파트
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📥 데이터 다운로드")
 
@@ -228,7 +238,7 @@ if selected_region != "전국 (전체)":
     )
 
 # ==========================================
-# 4. 상단 KPI 요약 카드리스트
+# 4. 상단 KPI 요약 카드 (전국 공통)
 # ==========================================
 nat_total_pop = df_year["전체인구"].sum()
 nat_elderly_pop = df_year["고령인구"].sum()
@@ -245,7 +255,7 @@ k1, k2, k3, k4 = st.columns(4)
 with k1:
     st.markdown(f'''
     <div class="kpi-box">
-        <div class="kpi-label">전국 평균 고령화율</div>
+        <div class="kpi-label">전국 평균 고령화율 ({selected_year}년)</div>
         <div class="kpi-val">{nat_aging_rate}%</div>
         <div class="kpi-desc">전체인구 {nat_total_pop:,}명</div>
     </div>
@@ -281,131 +291,68 @@ with k4:
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ==========================================
-# 5. 메인 탭 구성
+# SECTION 1: 🌐 전국 단위 빅데이터 분석 (항상 표시)
 # ==========================================
-tab_map, tab_infra, tab_compare, tab_scatter, tab_tree = st.tabs([
-    "🗺️ 전국 지도 & 미래 예측", 
-    "🏥 복지 인프라 공급 시급성 분석",
-    "⚔️ 지자체 1:1 비교",
-    "🎯 고령인구 규모 vs 비율 분석",
+st.markdown("### 🌐 PART 1. 대한민국 전체 고령화 지형도")
+
+tab_map, tab_infra, tab_scatter, tab_tree = st.tabs([
+    "🗺️ 전국 단계구분도", 
+    "🏥 복지 인프라 공급 시급성",
+    "🎯 고령인구 규모 vs 비율 매트릭스",
     "🔲 시·도 계층별 트리맵"
 ])
 
 # ------------------------------------------
-# TAB 1: 전국 지도 및 2035 예측 & 진단 리포트
+# TAB 1: 지도
 # ------------------------------------------
 with tab_map:
-    col_m, col_p = st.columns([1.1, 0.9])
+    color_discrete_map = {
+        "19% 미만": "#e0f2fe",
+        "19% 이상 ~ 23% 미만": "#7dd3fc",
+        "23% 이상 ~ 28% 미만": "#38bdf8",
+        "28% 이상 ~ 38% 미만": "#0284c7",
+        "38% 이상": "#0369a1"
+    }
 
-    with col_m:
-        st.markdown(f"##### 🗺️ {selected_year}년 전국 시군구 고령화 지도")
+    fig_map = px.choropleth_mapbox(
+        df_year,
+        geojson=geojson_data,
+        locations="sigungu_code",
+        featureidkey="properties.코드",
+        color="고령화 구간",
+        color_discrete_map=color_discrete_map,
+        category_orders={"고령화 구간": ["19% 미만", "19% 이상 ~ 23% 미만", "23% 이상 ~ 28% 미만", "28% 이상 ~ 38% 미만", "38% 이상"]},
+        hover_name="지역명",
+        hover_data={"시도": True, "시군구": True, "고령화율": ":.1f%", "sigungu_code": False, "고령화 구간": False},
+        center={"lat": 35.8, "lon": 127.8},
+        zoom=6.0,
+        mapbox_style="white-bg"
+    )
 
-        color_discrete_map = {
-            "19% 미만": "#e0f2fe",
-            "19% 이상 ~ 23% 미만": "#7dd3fc",
-            "23% 이상 ~ 28% 미만": "#38bdf8",
-            "28% 이상 ~ 38% 미만": "#0284c7",
-            "38% 이상": "#0369a1"
-        }
+    if selected_region != "전국 (전체)":
+        selected_row = df_year[df_year["지역명"] == selected_region]
+        if len(selected_row) > 0:
+            target_code = selected_row.iloc[0]["sigungu_code"]
+            if target_code in geo_centers:
+                lat, lon = geo_centers[target_code]
+                fig_map.add_trace(go.Scattermapbox(
+                    lat=[lat],
+                    lon=[lon],
+                    mode="markers+text",
+                    marker=dict(size=14, color="#ef4444"),
+                    text=[f"📍 {selected_region}"],
+                    textposition="top center",
+                    name="선택 지자체"
+                ))
+                fig_map.update_layout(mapbox=dict(center=dict(lat=lat, lon=lon), zoom=8.0))
 
-        fig_map = px.choropleth_mapbox(
-            df_year,
-            geojson=geojson_data,
-            locations="sigungu_code",
-            featureidkey="properties.코드",
-            color="고령화 구간",
-            color_discrete_map=color_discrete_map,
-            category_orders={"고령화 구간": ["19% 미만", "19% 이상 ~ 23% 미만", "23% 이상 ~ 28% 미만", "28% 이상 ~ 38% 미만", "38% 이상"]},
-            hover_name="지역명",
-            hover_data={"시도": True, "시군구": True, "고령화율": ":.1f%", "sigungu_code": False, "고령화 구간": False},
-            center={"lat": 35.8, "lon": 127.8},
-            zoom=6.0,
-            mapbox_style="white-bg"
-        )
-
-        if selected_region != "전국 (전체)":
-            selected_row = df_year[df_year["지역명"] == selected_region]
-            if len(selected_row) > 0:
-                target_code = selected_row.iloc[0]["sigungu_code"]
-                if target_code in geo_centers:
-                    lat, lon = geo_centers[target_code]
-                    fig_map.add_trace(go.Scattermapbox(
-                        lat=[lat],
-                        lon=[lon],
-                        mode="markers+text",
-                        marker=dict(size=14, color="#ef4444"),
-                        text=[f"📍 {selected_region}"],
-                        textposition="top center",
-                        name="선택 지자체"
-                    ))
-                    fig_map.update_layout(mapbox=dict(center=dict(lat=lat, lon=lon), zoom=8.0))
-
-        fig_map.update_layout(margin={"r":0, "t":10, "l":0, "b":0}, height=530)
-        st.plotly_chart(fig_map, use_container_width=True)
-
-    with col_p:
-        st.markdown("##### 🔮 고령화 진단 리포트 & 2035년 미래 예측")
-
-        if selected_region != "전국 (전체)":
-            reg_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
-            
-            X = reg_df["연도"].values
-            y = reg_df["고령화율"].values
-            poly = np.polyfit(X, y, 1)
-            
-            future_years = np.arange(max_year + 1, 2036)
-            future_y = np.polyval(poly, future_years).round(1)
-
-            curr_rate = y[-1]
-            pred_2035 = future_y[-1]
-            growth_10y = round(curr_rate - y[0], 1) if len(y) > 0 else 0.0
-
-            if curr_rate >= 30.0:
-                risk_level = "🚨 초고위험 단계"
-                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 이미 극심한 초고령사회에 진입해 있습니다."
-                st.error(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
-            elif curr_rate >= 20.0:
-                risk_level = "⚠️ 고위험 단계 (초고령사회)"
-                risk_msg = f"**{selected_region}**은(는) UN 기준 초고령사회(20% 이상)에 해당하며, 지난 10년간 고령화율이 **+{growth_10y}%p** 증가했습니다."
-                st.warning(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
-            elif curr_rate >= 14.0:
-                risk_level = "🟡 주의 단계 (고령사회)"
-                risk_msg = f"**{selected_region}**은(는) 고령사회(14% 이상) 수준에 도달해 있으며, 2035년경에는 **{pred_2035}%**까지 상승할 예상입니다."
-                st.info(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
-            else:
-                risk_level = "🟢 양호 단계"
-                risk_msg = f"**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 비교적 젊은 인구 구조를 유지하고 있습니다."
-                st.success(f"**[진단 결과: {risk_level}]**\n\n{risk_msg}")
-
-            fig_pred = go.Figure()
-            fig_pred.add_trace(go.Scatter(
-                x=X, y=y, mode="lines+markers", name="관측치",
-                line=dict(color="#3b82f6", width=3)
-            ))
-            fig_pred.add_trace(go.Scatter(
-                x=np.append(X[-1], future_years), y=np.append(y[-1], future_y),
-                mode="lines+markers", name="예측치",
-                line=dict(color="#ef4444", width=3, dash="dot")
-            ))
-
-            fig_pred.update_layout(
-                xaxis=dict(title="연도", dtick=2),
-                yaxis=dict(title="고령화율 (%)"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin={"r":10, "t":10, "l":10, "b":10},
-                height=340
-            )
-            st.plotly_chart(fig_pred, use_container_width=True)
-        else:
-            st.info("👈 사이드바 필터에서 특정 **시군구**를 선택하시면 지자체 자동 진단 리포트와 2035년 미래 예측 그래프를 확인할 수 있습니다.")
+    fig_map.update_layout(margin={"r":0, "t":10, "l":0, "b":0}, height=550)
+    st.plotly_chart(fig_map, use_container_width=True)
 
 # ------------------------------------------
-# TAB 2: 복지 인프라 시급성 분석
+# TAB 2: 복지 인프라 분석
 # ------------------------------------------
 with tab_infra:
-    st.markdown(f"##### 🏥 {selected_year}년 고령인구 규모 & 비율 기반 복지 인프라 시급성 진단")
-    st.caption("고령화 비율과 절대 인구 수 규모를 종합하여 노인복지관, 요양시설, 실버케어 서비스 확충이 가장 시급한 지자체를 구분합니다.")
-
     avg_elderly_pop = df_year["고령인구"].median()
     avg_aging_rate = df_year["고령화율"].mean()
 
@@ -425,7 +372,7 @@ with tab_infra:
     col_i1, col_i2 = st.columns([1, 1])
 
     with col_i1:
-        st.markdown("##### 📌 지자체 인프라 시급성 분류 현황")
+        st.markdown("##### 📌 지자체 인프라 시급성 비율 현황")
         fig_infra_pie = px.pie(
             names=infra_counts.index,
             values=infra_counts.values,
@@ -442,122 +389,16 @@ with tab_infra:
         st.plotly_chart(fig_infra_pie, use_container_width=True)
 
     with col_i2:
-        st.markdown("##### 🚨 1순위 (복지 인프라 확충 최우선 지자체 Top 10)")
+        st.markdown("##### 🚨 1순위 확충 최우선 지자체 Top 10")
         p1_df = df_year[df_year["인프라시급성"].str.contains("1순위")].sort_values(by="고령인구", ascending=False).head(10)
         p1_display = p1_df[["지역명", "고령인구", "고령화율"]].reset_index(drop=True)
         p1_display.columns = ["지역명", "65세 이상 인구 (명)", "고령화율 (%)"]
         st.dataframe(p1_display, use_container_width=True)
 
-    if selected_region != "전국 (전체)":
-        target_infra = df_year[df_year["지역명"] == selected_region]
-        if len(target_infra) > 0:
-            infra_type = target_infra.iloc[0]["인프라시급성"]
-            st.info(f"📍 **{selected_region} 진단:** 해당 지역은 **[{infra_type}]** 그룹으로 산출되었습니다.")
-
 # ------------------------------------------
-# TAB 3: 지자체 1:1 비교
-# ------------------------------------------
-with tab_compare:
-    st.markdown("##### ⚔️ 두 지자체 간 1:1 수치 및 추이 직접 비교")
-    st.caption("비교하고 싶은 두 지자체를 자유롭게 선택하여 고령화율과 인구 규모를 다각도로 대조합니다.")
-
-    col_sel1, col_sel2 = st.columns(2)
-    region_list = sorted(valid_regions)
-    
-    default_idx1 = region_list.index("충청남도 공주시") if "충청남도 공주시" in region_list else 0
-    default_idx2 = region_list.index("충청남도 아산시") if "충청남도 아산시" in region_list else min(1, len(region_list)-1)
-
-    with col_sel1:
-        region_A = st.selectbox("🔵 첫 번째 비교 지자체 (A)", options=region_list, index=default_idx1)
-    with col_sel2:
-        region_B = st.selectbox("🔴 두 번째 비교 지자체 (B)", options=region_list, index=default_idx2)
-
-    if region_A and region_B:
-        df_A = df_year[df_year["지역명"] == region_A].iloc[0]
-        df_B = df_year[df_year["지역명"] == region_B].iloc[0]
-
-        c_kpi1, c_kpi2 = st.columns(2)
-        with c_kpi1:
-            st.info(f"""
-            **🔵 {region_A} ({selected_year}년 기준)**
-            - **고령화율:** `{df_A['고령화율']}%` (전국 {df_A['전국순위']}위)
-            - **전체 인구:** `{df_A['전체인구']:,}명`
-            - **65세 이상 인구:** `{df_A['고령인구']:,}명`
-            """)
-        with c_kpi2:
-            st.warning(f"""
-            **🔴 {region_B} ({selected_year}년 기준)**
-            - **고령화율:** `{df_B['고령화율']}%` (전국 {df_B['전국순위']}위)
-            - **전체 인구:** `{df_B['전체인구']:,}명`
-            - **65세 이상 인구:** `{df_B['고령인구']:,}명`
-            """)
-
-        col_c1, col_c2 = st.columns(2)
-        
-        with col_c1:
-            st.markdown("##### 📈 연도별 고령화율 추이 비교 (%)")
-            
-            trend_A = sigungu_yearly[sigungu_yearly["지역명"] == region_A].sort_values("연도")
-            trend_B = sigungu_yearly[sigungu_yearly["지역명"] == region_B].sort_values("연도")
-
-            nat_trend = sigungu_yearly.groupby("연도").apply(
-                lambda x: (x["고령인구"].sum() / x["전체인구"].sum()) * 100
-            ).reset_index(name="전국평균")
-
-            fig_comp_line = go.Figure()
-            fig_comp_line.add_trace(go.Scatter(
-                x=nat_trend["연도"], y=nat_trend["전국평균"].round(1),
-                mode="lines", name="전국 평균", line=dict(color="#94a3b8", width=2, dash="dash")
-            ))
-            fig_comp_line.add_trace(go.Scatter(
-                x=trend_A["연도"], y=trend_A["고령화율"],
-                mode="lines+markers", name=f"🔵 {region_A}", line=dict(color="#2563eb", width=3)
-            ))
-            fig_comp_line.add_trace(go.Scatter(
-                x=trend_B["연도"], y=trend_B["고령화율"],
-                mode="lines+markers", name=f"🔴 {region_B}", line=dict(color="#ef4444", width=3)
-            ))
-
-            fig_comp_line.update_layout(
-                xaxis=dict(title="연도", dtick=1),
-                yaxis=dict(title="고령화율 (%)"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin={"r":10, "t":10, "l":10, "b":10},
-                height=380
-            )
-            st.plotly_chart(fig_comp_line, use_container_width=True)
-
-        with col_c2:
-            st.markdown(f"##### 📊 {selected_year}년 인구 구조 직접 비교 (명)")
-            
-            comp_pop_df = pd.DataFrame({
-                "구분": ["전체 인구", "65세 이상 인구"],
-                f"🔵 {region_A}": [df_A["전체인구"], df_A["고령인구"]],
-                f"🔴 {region_B}": [df_B["전체인구"], df_B["고령인구"]]
-            })
-
-            fig_comp_bar = px.bar(
-                comp_pop_df,
-                x="구분",
-                y=[f"🔵 {region_A}", f"🔴 {region_B}"],
-                barmode="group",
-                color_discrete_sequence=["#2563eb", "#ef4444"]
-            )
-            fig_comp_bar.update_layout(
-                yaxis=dict(title="인원수 (명)"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                margin={"r":10, "t":10, "l":10, "b":10},
-                height=380
-            )
-            st.plotly_chart(fig_comp_bar, use_container_width=True)
-
-# ------------------------------------------
-# TAB 4: 버블 산점도 분석
+# TAB 3: 버블 산점도 분석
 # ------------------------------------------
 with tab_scatter:
-    st.markdown("##### 🎯 65세 이상 절대 인구수 vs 고령화 비율 (4분면 매트릭스)")
-    st.caption("비율만 높은 군 단위 지자체와, 비율은 낮아도 실제 노인 수가 많은 대도시 지자체의 특성을 한눈에 비교합니다.")
-
     avg_rate = df_year["고령화율"].mean()
 
     fig_bubble = px.scatter(
@@ -573,16 +414,13 @@ with tab_scatter:
     )
 
     fig_bubble.add_hline(y=avg_rate, line_dash="dash", line_color="red", annotation_text=f"전국 평균 비율 ({avg_rate:.1f}%)")
-    fig_bubble.update_layout(height=580, margin={"r":10, "t":30, "l":10, "b":10})
+    fig_bubble.update_layout(height=550, margin={"r":10, "t":30, "l":10, "b":10})
     st.plotly_chart(fig_bubble, use_container_width=True)
 
 # ------------------------------------------
-# TAB 5: 시도 트리맵
+# TAB 4: 시도 트리맵
 # ------------------------------------------
 with tab_tree:
-    st.markdown("##### 🔲 시·도별 시군구 계층 구조 트리맵")
-    st.caption("네모 박스를 클릭하면 원하는 시·도 내 시군구 구조로 드릴다운(Zoom-in) 탐색이 가능합니다.")
-
     fig_tree = px.treemap(
         df_year,
         path=[px.Constant("전국"), "시도", "시군구"],
@@ -592,86 +430,11 @@ with tab_tree:
         range_color=[10, 45],
         hover_data={"고령화율": ":.1f%", "전체인구": ":,명", "고령인구": ":,명"}
     )
-    fig_tree.update_layout(margin={"r":0, "t":30, "l":0, "b":0}, height=580)
+    fig_tree.update_layout(margin={"r":0, "t":30, "l":0, "b":0}, height=550)
     st.plotly_chart(fig_tree, use_container_width=True)
 
-# ==========================================
-# 6. 지자체 종합 브리핑 보고서 (PDF/인쇄 브라우저 자동 출력)
-# ==========================================
-st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("### 📑 지자체 종합 브리핑 보고서 생성")
-
-if selected_region != "전국 (전체)":
-    rep_row = df_year[df_year["지역명"] == selected_region].iloc[0]
-    
-    reg_history = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
-    rate_2015 = reg_history.iloc[0]["고령화율"]
-    rate_curr = rep_row["고령화율"]
-    diff_rate = round(rate_curr - rate_2015, 1)
-
-    # 보고서 HTML 템플릿
-    report_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: 'Malgun Gothic', sans-serif; padding: 20px; background: #fff; color: #333; }}
-            .rep-card {{ border: 2px solid #0f172a; border-radius: 12px; padding: 30px; max-width: 800px; margin: 0 auto; }}
-            .rep-title {{ font-size: 24px; font-weight: bold; border-bottom: 3px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; text-align: center; color: #0f172a; }}
-            .rep-grid {{ display: flex; justify-content: space-between; margin-bottom: 20px; background: #f8fafc; padding: 15px; border-radius: 8px; }}
-            .rep-item {{ text-align: center; width: 30%; }}
-            .rep-label {{ font-size: 13px; color: #64748b; font-weight: bold; }}
-            .rep-val {{ font-size: 20px; font-weight: bold; color: #1e293b; margin-top: 5px; }}
-            .rep-section {{ margin-top: 20px; line-height: 1.6; font-size: 14px; }}
-            .rep-badge {{ background: #ef4444; color: white; padding: 3px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }}
-            .print-btn {{ background: #2563eb; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 15px; width: 100%; }}
-            .print-btn:hover {{ background: #1d4ed8; }}
-        </style>
-    </head>
-    <body>
-        <div class="rep-card">
-            <div class="rep-title">📄 {selected_region} 고령화 인구 종합 브리핑 보고서</div>
-            <div class="rep-grid">
-                <div class="rep-item">
-                    <div class="rep-label">기준 연도</div>
-                    <div class="rep-val">{selected_year}년</div>
-                </div>
-                <div class="rep-item">
-                    <div class="rep-label">고령화율 (전국 순위)</div>
-                    <div class="rep-val">{rep_row['고령화율']}% ({rep_row['전국순위']}위)</div>
-                </div>
-                <div class="rep-item">
-                    <div class="rep-label">65세 이상 인구</div>
-                    <div class="rep-val">{rep_row['고령인구']:,} 명</div>
-                </div>
-            </div>
-            <div class="rep-section">
-                <h4>📌 주요 동향 요약</h4>
-                <ul>
-                    <li><b>인구 구조:</b> {selected_year}년 기준 총 인구 <b>{rep_row['전체인구']:,}명</b> 중 65세 이상 고령층 인구는 <b>{rep_row['고령인구']:,}명</b>을 차지함.</li>
-                    <li><b>10년 추이:</b> 2015년 고령화율 <b>{rate_2015}%</b>에서 {selected_year}년 현재 <b>{rate_curr}%</b>로 <b>+{diff_rate}%p</b> 증가함.</li>
-                    <li><b>인프라 종합 시급성:</b> 본 지자체는 현재 복지 인프라 공급 시급성 평가에서 관리가 필요한 지역으로 분류됨.</li>
-                </ul>
-            </div>
-            <button class="print-btn" onclick="window.print()">🖨️ 브라우저 PDF 출력 / 즉시 인쇄하기</button>
-        </div>
-    </body>
-    </html>
-    """
-    
-    components.html(report_html, height=450)
-else:
-    st.info("👈 사이드바에서 특정 **시군구**를 선택하시면 보고서 카드가 자동 생성됩니다.")
-
-# ==========================================
-# 7. 하단 데이터 정리
-# ==========================================
-st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown(f"##### 📋 {selected_year}년 고령화율 극단 지자체 (Top 10 / Bottom 10)")
-
-col1, col2 = st.columns(2)
-
+# 하단 간단 극단 지자체 표
+col_t1, col_t2 = st.columns(2)
 top10 = df_year.sort_values(by="고령화율", ascending=False).head(10)[["지역명", "고령화율"]].reset_index(drop=True)
 top10.index = top10.index + 1
 top10.columns = ["지역명", "고령화율 (%)"]
@@ -680,10 +443,166 @@ bottom10 = df_year.sort_values(by="고령화율", ascending=True).head(10)[["지
 bottom10.index = bottom10.index + 1
 bottom10.columns = ["지역명", "고령화율 (%)"]
 
-with col1:
+with col_t1:
     st.markdown("🔴 **고령화율 가장 높은 지역 Top 10**")
     st.dataframe(top10, use_container_width=True)
 
-with col2:
+with col_t2:
     st.markdown("🔵 **고령화율 가장 낮은 지역 Top 10**")
     st.dataframe(bottom10, use_container_width=True)
+
+
+# ==========================================
+# SECTION 2: 🔍 타겟 지자체 딥다이브 (지역 선택시에만 노출)
+# ==========================================
+if selected_region != "전국 (전체)":
+    st.markdown("<br><hr>", unsafe_allow_html=True)
+    st.markdown(f"### 🔍 PART 2. 타겟 지자체 딥다이브 분석 — [{selected_region}]")
+
+    # 선택 지역 안전 검색 (IndexError 완벽 방지)
+    target_match = df_year[df_year["지역명"] == selected_region]
+
+    if not target_match.empty:
+        rep_row = target_match.iloc[0]
+        
+        reg_df = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
+        X = reg_df["연도"].values
+        y = reg_df["고령화율"].values
+        poly = np.polyfit(X, y, 1)
+        future_years = np.arange(max_year + 1, 2036)
+        future_y = np.polyval(poly, future_years).round(1)
+
+        curr_rate = y[-1]
+        pred_2035 = future_y[-1]
+        growth_10y = round(curr_rate - y[0], 1) if len(y) > 0 else 0.0
+
+        # 지자체 서브 탭 (지역 단위 집중 분석)
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs([
+            "🩺 위험 등급 진단 & 2035년 예측",
+            "⚔️ 1:1 타 지자체 교차 비교",
+            "📑 브리핑 보고서 (PDF/인쇄 생성)"
+        ])
+
+        # Sub Tab 1: 진단 리포트 & 예측
+        with sub_tab1:
+            col_pred1, col_pred2 = st.columns([1, 1])
+
+            with col_pred1:
+                st.markdown("##### 🚨 고령화 위험 등급 진단")
+                if curr_rate >= 30.0:
+                    st.error(f"**[초고위험 단계]**\n\n**{selected_region}**은(는) 고령화율이 **{curr_rate}%**로 심각한 초고령사회 수준입니다. 사회적 복지 비용 폭증에 대한 신속한 정책 마련이 시급합니다.")
+                elif curr_rate >= 20.0:
+                    st.warning(f"**[고위험 단계 - 초고령사회]**\n\n**{selected_region}**은(는) 고령화율 **{curr_rate}%**로 UN 기준 초고령사회에 해당합니다. (지난 10년간 **+{growth_10y}%p** 증가)")
+                elif curr_rate >= 14.0:
+                    st.info(f"**[주의 단계 - 고령사회]**\n\n**{selected_region}**은(는) 현재 고령사회이며, 2035년에는 **{pred_2035}%**에 도달할 것으로 예상됩니다.")
+                else:
+                    st.success(f"**[양호 단계]**\n\n**{selected_region}**은(는) 고령화율 **{curr_rate}%**로 비교적 젊은 인구 체질을 유지하고 있습니다.")
+
+                # 인프라 분류 정보
+                if "인프라시급성" in rep_row:
+                    st.info(f"🏥 **복지 인프라 공급 유형:** `{rep_row['인프라시급성']}`")
+
+            with col_pred2:
+                st.markdown("##### 🔮 2035년 시점 미래 추이 예측")
+                fig_pred = go.Figure()
+                fig_pred.add_trace(go.Scatter(x=X, y=y, mode="lines+markers", name="관측치", line=dict(color="#3b82f6", width=3)))
+                fig_pred.add_trace(go.Scatter(x=np.append(X[-1], future_years), y=np.append(y[-1], future_y), mode="lines+markers", name="예측치", line=dict(color="#ef4444", width=3, dash="dot")))
+                fig_pred.update_layout(
+                    xaxis=dict(title="연도", dtick=2), yaxis=dict(title="고령화율 (%)"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    margin={"r":10, "t":10, "l":10, "b":10}, height=300
+                )
+                st.plotly_chart(fig_pred, use_container_width=True)
+
+        # Sub Tab 2: 1:1 비교
+        with sub_tab2:
+            st.markdown(f"##### ⚔️ [{selected_region}] VS 다른 지자체 1:1 비교")
+            region_list_sub = sorted([r for r in valid_regions if r != selected_region])
+            
+            region_B = st.selectbox("🔴 비교할 상대 지자체 선택", options=region_list_sub, index=0)
+
+            if region_B:
+                df_A = rep_row
+                df_B_match = df_year[df_year["지역명"] == region_B]
+                
+                if not df_B_match.empty:
+                    df_B = df_B_match.iloc[0]
+
+                    c_kpi1, c_kpi2 = st.columns(2)
+                    with c_kpi1:
+                        st.info(f"**🔵 {selected_region}**\n- 고령화율: `{df_A['고령화율']}%` (전국 {df_A['전국순위']}위)\n- 전체인구: `{df_A['전체인구']:,}명` | 고령인구: `{df_A['고령인구']:,}명`")
+                    with c_kpi2:
+                        st.warning(f"**🔴 {region_B}**\n- 고령화율: `{df_B['고령화율']}%` (전국 {df_B['전국순위']}위)\n- 전체인구: `{df_B['전체인구']:,}명` | 고령인구: `{df_B['고령인구']:,}명`")
+
+                    col_c1, col_c2 = st.columns(2)
+                    with col_c1:
+                        trend_A = sigungu_yearly[sigungu_yearly["지역명"] == selected_region].sort_values("연도")
+                        trend_B = sigungu_yearly[sigungu_yearly["지역명"] == region_B].sort_values("연도")
+                        
+                        fig_comp_line = go.Figure()
+                        fig_comp_line.add_trace(go.Scatter(x=trend_A["연도"], y=trend_A["고령화율"], mode="lines+markers", name=f"🔵 {selected_region}", line=dict(color="#2563eb", width=3)))
+                        fig_comp_line.add_trace(go.Scatter(x=trend_B["연도"], y=trend_B["고령화율"], mode="lines+markers", name=f"🔴 {region_B}", line=dict(color="#ef4444", width=3)))
+                        fig_comp_line.update_layout(xaxis=dict(title="연도"), yaxis=dict(title="고령화율 (%)"), margin={"r":10, "t":10, "l":10, "b":10}, height=320)
+                        st.plotly_chart(fig_comp_line, use_container_width=True)
+
+                    with col_c2:
+                        comp_pop_df = pd.DataFrame({
+                            "구분": ["전체 인구", "65세 이상 인구"],
+                            f"🔵 {selected_region}": [df_A["전체인구"], df_A["고령인구"]],
+                            f"🔴 {region_B}": [df_B["전체인구"], df_B["고령인구"]]
+                        })
+                        fig_comp_bar = px.bar(comp_pop_df, x="구분", y=[f"🔵 {selected_region}", f"🔴 {region_B}"], barmode="group", color_discrete_sequence=["#2563eb", "#ef4444"])
+                        fig_comp_bar.update_layout(yaxis=dict(title="인원수 (명)"), margin={"r":10, "t":10, "l":10, "b":10}, height=320)
+                        st.plotly_chart(fig_comp_bar, use_container_width=True)
+
+        # Sub Tab 3: 종합 보고서 출력
+        with sub_tab3:
+            st.markdown("##### 📑 한 클릭 종합 브리핑 보고서")
+            
+            rate_2015 = reg_df.iloc[0]["고령화율"] if len(reg_df) > 0 else 0.0
+            rate_curr = rep_row["고령화율"]
+            diff_rate = round(rate_curr - rate_2015, 1)
+
+            report_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    body {{ font-family: 'Malgun Gothic', sans-serif; padding: 15px; background: #fff; color: #333; }}
+                    .rep-card {{ border: 2px solid #0f172a; border-radius: 12px; padding: 25px; max-width: 750px; margin: 0 auto; }}
+                    .rep-title {{ font-size: 22px; font-weight: bold; border-bottom: 3px solid #2563eb; padding-bottom: 10px; margin-bottom: 15px; text-align: center; color: #0f172a; }}
+                    .rep-grid {{ display: flex; justify-content: space-between; margin-bottom: 15px; background: #f8fafc; padding: 12px; border-radius: 8px; }}
+                    .rep-item {{ text-align: center; width: 30%; }}
+                    .rep-label {{ font-size: 12px; color: #64748b; font-weight: bold; }}
+                    .rep-val {{ font-size: 18px; font-weight: bold; color: #1e293b; margin-top: 4px; }}
+                    .rep-section {{ margin-top: 15px; line-height: 1.6; font-size: 13px; }}
+                    .print-btn {{ background: #2563eb; color: white; border: none; padding: 10px 20px; font-size: 14px; font-weight: bold; border-radius: 6px; cursor: pointer; margin-top: 15px; width: 100%; }}
+                    .print-btn:hover {{ background: #1d4ed8; }}
+                </style>
+            </head>
+            <body>
+                <div class="rep-card">
+                    <div class="rep-title">📄 {selected_region} 고령화 종합 브리핑 리포트</div>
+                    <div class="rep-grid">
+                        <div class="rep-item"><div class="rep-label">분석 연도</div><div class="rep-val">{selected_year}년</div></div>
+                        <div class="rep-item"><div class="rep-label">고령화율 (전국 순위)</div><div class="rep-val">{rep_row['고령화율']}% ({rep_row['전국순위']}위)</div></div>
+                        <div class="rep-item"><div class="rep-label">65세 이상 인구</div><div class="rep-val">{rep_row['고령인구']:,} 명</div></div>
+                    </div>
+                    <div class="rep-section">
+                        <h4>📌 핵심 동향</h4>
+                        <ul>
+                            <li><b>인구 현황:</b> 총 인구 <b>{rep_row['전체인구']:,}명</b> 중 고령층 <b>{rep_row['고령인구']:,}명</b> 도달.</li>
+                            <li><b>10년 변화:</b> 2015년({rate_2015}%) 대비 {selected_year}년({rate_curr}%)으로 <b>+{diff_rate}%p</b> 변화.</li>
+                        </ul>
+                    </div>
+                    <button class="print-btn" onclick="window.print()">🖨️ PDF / A4 즉시 인쇄하기</button>
+                </div>
+            </body>
+            </html>
+            """
+            components.html(report_html, height=420)
+    else:
+        st.warning(f"선택하신 연도({selected_year}년)에 [{selected_region}]의 데이터가 존재하지 않습니다.")
+else:
+    st.info("💡 사이드바에서 특정 **시군구**를 선택하시면 지자체 개별 딥다이브 진단 및 1:1 비교, 보고서 인쇄 창이 생성됩니다.")
